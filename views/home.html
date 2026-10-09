@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LUMIERE — Fragrance discovery & community</title>
+  <meta name="description" content="LUMIERE is a community for discovering, reviewing and sharing fragrances." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+  <!-- ============ Header ============ -->
+  <header class="header">
+    <div class="container header__inner">
+      <a href="/" class="logo" aria-label="LUMIERE home">
+        <span class="logo__mark" aria-hidden="true"></span>
+        LUMIERE
+      </a>
+
+      <form class="header-search" role="search" data-search>
+        <svg class="header-search__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input type="search" placeholder="Search perfumes, brands, notes…" aria-label="Search perfumes" autocomplete="off" />
+        <div class="search-suggest" hidden></div>
+      </form>
+
+      <nav class="nav" id="nav" aria-label="Main navigation">
+        <a href="/" class="nav__link is-active" aria-current="page">Home</a>
+        <a href="#trending" class="nav__link" data-members-only>Discover</a>
+        <a href="#activity" class="nav__link" data-members-only>Community</a>
+        <a href="#reviews" class="nav__link" data-members-only>Reviews</a>
+        <a href="#" class="nav__link" data-members-only data-soon>Messages <span class="badge">3</span></a>
+        <div class="nav__auth-mobile" id="navAuthMobile">
+          <!-- Rendered by main.js (log in / sign up, or your account links) -->
+        </div>
+      </nav>
+
+      <div class="header__actions">
+        <div class="header__account" id="headerAccount">
+          <!-- Rendered by main.js (log in / sign up, or your account menu) -->
+        </div>
+        <button class="icon-btn nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="nav">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ============ Search hero ============ -->
+    <section class="hero" id="search">
+      <div class="container hero__grid">
+        <div class="hero__main">
+          <h1 class="hero__title">Find your next favorite fragrance</h1>
+          <p class="hero__subtitle">Real reviews from real people. Search thousands of perfumes, compare notes, and see what the community is wearing.</p>
+
+          <form class="hero-search" role="search" data-search>
+            <svg class="hero-search__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input type="search" placeholder="Try “sandalwood”, “fresh summer” or a brand…" aria-label="Search perfumes" autocomplete="off" />
+            <button type="submit" class="btn btn--primary">Search</button>
+            <div class="search-suggest" hidden></div>
+          </form>
+
+          <div class="hero__popular">
+            <span>Popular:</span>
+            <button class="tag" data-query="vanilla">Vanilla</button>
+            <button class="tag" data-query="woody">Woody</button>
+            <button class="tag" data-query="fresh">Fresh for summer</button>
+            <button class="tag" data-query="musk">Clean musk</button>
+            <button class="tag" data-query="rose">Rose</button>
+          </div>
+        </div>
+
+        <aside class="snapshot" aria-label="Community snapshot">
+          <div class="snapshot__head">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span>Live in the community</span>
+          </div>
+          <div class="snapshot__welcome" id="snapshotWelcome">
+            <p class="snapshot__title">Welcome to LUMIERE 👋</p>
+            <p>Want to chat with other fragrance lovers and share your opinion in reviews? Join the community — it only takes a minute.</p>
+          </div>
+          <div class="snapshot__online">
+            <div class="avatar-stack" id="onlineAvatars"></div>
+            <p><strong>214</strong> people online now</p>
+          </div>
+          <div id="snapshotCta">
+            <button class="btn btn--primary btn--block" data-auth="signup">Join the community — it’s free</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============ Trending ============ -->
+    <section class="section" id="trending">
+      <div class="container">
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">Trending perfumes</h2>
+            <p class="section-sub">Most saved and reviewed by the community</p>
+          </div>
+          <div class="section-head__actions">
+            <div class="segmented" role="tablist" aria-label="Trending period" id="trendTabs">
+              <button role="tab" aria-selected="true" data-period="week">This week</button>
+              <button role="tab" aria-selected="false" data-period="month">This month</button>
+              <button role="tab" aria-selected="false" data-period="all">All time</button>
+            </div>
+            <div class="carousel-controls">
+              <span class="carousel-controls__status" id="trendStatus" aria-live="polite"></span>
+              <button class="icon-btn" id="trendPrev" aria-label="Previous perfumes">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+              </button>
+              <button class="icon-btn" id="trendNext" aria-label="Next perfumes">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="filter-bar" id="filterBar" role="group" aria-label="Filter by scent family">
+          <!-- Rendered by main.js -->
+        </div>
+
+        <div class="carousel" id="trendingGrid" tabindex="0" aria-label="Trending perfumes, scroll sideways for more">
+          <!-- Rendered by main.js -->
+        </div>
+        <p class="empty-state" id="trendingEmpty" hidden>No perfumes match this filter yet.</p>
+      </div>
+    </section>
+
+    <!-- ============ Reviews + Community activity ============ -->
+    <section class="section section--alt">
+      <div class="container two-col">
+        <div id="reviews">
+          <div class="section-head">
+            <div>
+              <h2 class="section-title">Popular reviews</h2>
+              <p class="section-sub">The most helpful reviews this week</p>
+            </div>
+            <a href="#" class="link">See all reviews</a>
+          </div>
+          <div class="review-list" id="reviewList">
+            <!-- Rendered by main.js -->
+          </div>
+        </div>
+
+        <aside class="sidebar" id="activity">
+          <div class="panel">
+            <div class="panel__head">
+              <h2 class="panel__title">Community activity</h2>
+              <span class="live-dot" aria-label="Live"></span>
+            </div>
+            <ul class="activity" id="activityFeed">
+              <!-- Rendered by main.js -->
+            </ul>
+          </div>
+
+          <div class="panel">
+            <div class="panel__head">
+              <h2 class="panel__title">Top reviewers</h2>
+              <a href="#" class="link link--sm">View all</a>
+            </div>
+            <ul class="reviewers" id="topReviewers">
+              <!-- Rendered by main.js -->
+            </ul>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============ Perfume page (rendered by main.js) ============ -->
+  <div class="perfume-view" id="perfumeView" hidden></div>
+
+  <!-- ============ Footer ============ -->
+  <footer class="footer">
+    <div class="container footer__grid">
+      <div class="footer__brand">
+        <a href="/" class="logo"><span class="logo__mark" aria-hidden="true"></span>LUMIERE</a>
+        <p>The community for discovering, reviewing and talking about fragrance.</p>
+      </div>
+      <div>
+        <h3>Discover</h3>
+        <ul>
+          <li><a href="#trending">Trending</a></li>
+          <li><a href="#notes">Notes</a></li>
+          <li><a href="#recommended">Recommendations</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Community</h3>
+        <ul>
+          <li><a href="#reviews">Reviews</a></li>
+          <li><a href="#activity">Activity</a></li>
+          <li><a href="#">Guidelines</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>LUMIERE</h3>
+        <ul>
+          <li><a href="#">About</a></li>
+          <li><a href="#">Help center</a></li>
+          <li><a href="#">Privacy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="container footer__bottom">
+      <p>&copy; <span id="year"></span> LUMIERE. All rights reserved.</p>
+      <p>Made for fragrance lovers.</p>
+    </div>
+  </footer>
+
+  <!-- Sign up / log in window (rendered by main.js) -->
+  <div class="modal" id="authModal" hidden></div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="/js/main.js"></script>
+</body>
+</html>
