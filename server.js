@@ -6,6 +6,7 @@ require("dotenv").config();
 const app = express();
 
 app.use(express.static(path.join(__dirname, "public")));
+app.use("/vendor/d3", express.static(path.join(__dirname, "node_modules", "d3", "dist")));
 app.use("/api", require("./routes/api"));
 
 // חיבור ל-MongoDB
@@ -18,6 +19,10 @@ app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "views", "home.html"));
 });
 
-app.listen(3000, () => {
+// HTTP server shared by Express and the live messenger (Socket.io)
+const server = require("http").createServer(app);
+require("./lib/realtime").attachRealtime(server);
+
+server.listen(3000, () => {
   console.log("Server running on http://localhost:3000");
 });

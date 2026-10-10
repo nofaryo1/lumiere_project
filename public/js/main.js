@@ -1,36 +1,29 @@
 /* =========================================================
    LUMIERE — Homepage scripts
-   All data below is placeholder content. Later it can be
-   replaced with data fetched from the Express API / MongoDB.
+   Perfumes, members, reviews, likes and follows come from the
+   Express API (/api) backed by MongoDB.
    ========================================================= */
 
 (function () {
   "use strict";
 
   /* =======================================================
-     Placeholder data
+     Data
      ======================================================= */
 
   // Scent families used by the trending filters
   const families = [
-    { key: "woody",    name: "Woody",    count: 642 },
-    { key: "floral",   name: "Floral",   count: 811 },
-    { key: "fresh",    name: "Fresh",    count: 534 },
-    { key: "amber",    name: "Amber",    count: 397 },
-    { key: "citrus",   name: "Citrus",   count: 415 },
-    { key: "musk",     name: "Musk",     count: 288 },
-    { key: "spicy",    name: "Spicy",    count: 263 },
-    { key: "gourmand", name: "Gourmand", count: 219 },
+    { key: "woody", name: "Woody" },
+    { key: "floral", name: "Floral" },
+    { key: "fresh", name: "Fresh" },
+    { key: "amber", name: "Amber" },
+    { key: "citrus", name: "Citrus" },
+    { key: "musk", name: "Musk" },
+    { key: "spicy", name: "Spicy" },
+    { key: "gourmand", name: "Gourmand" },
   ];
 
-  // Most popular first, per Trending tab. Everything else follows.
-  const POPULAR = {
-    week:  ["dior-sauvage", "lattafa-yara", "dolce-gabbana-light-blue", "byredo-gypsy-water", "versace-eros", "chanel-no-5", "tom-ford-ombre-leather"],
-    month: ["dior-sauvage", "tom-ford-ombre-leather", "xerjoff-naxos", "chanel-coco-mademoiselle", "lattafa-yara", "armani-acqua-di-gio"],
-    all:   ["chanel-no-5", "dior-sauvage", "armani-acqua-di-gio", "dior-jadore", "dolce-gabbana-light-blue", "chanel-coco-mademoiselle"],
-  };
-
-  // Small stable hash so placeholder numbers stay the same on every load
+  // Small stable hash (avatar colors, bottle illustrations)
   function hash(str) {
     let h = 2166136261;
     for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619);
@@ -43,20 +36,12 @@
   // Filled from the API (/api/perfumes) when the page loads
   let perfumes = [];
 
-  // Turns an API record into what the page uses. Catalog perfumes get
-  // placeholder ratings/trends on top of real member activity; perfumes
-  // added by members only show real activity.
+  // Turns an API record + its activity stats into what the page uses
   function buildPerfume(rec, stat = {}) {
     const id = rec.slug;
     const h = hash(id);
     const tags = rec.tags || [];
-    const isCatalog = rec.source === "catalog";
-    const ratings = isCatalog ? 300 + (h % 4200) : 0;
-    const score = {};
-    for (const period of Object.keys(POPULAR)) {
-      const rank = POPULAR[period].indexOf(id);
-      score[period] = !isCatalog ? -1 : rank >= 0 ? 100 - rank : (hash(id + period) % 60);
-    }
+    const s = { reviews: 0, ratingSum: 0, likes: 0, week: 0, prevWeek: 0, month: 0, ...stat };
     return {
       id,
       name: rec.name,
@@ -66,62 +51,14 @@
       image: rec.image || "",
       source: rec.source,
       addedBy: rec.addedBy || null,
-      rating: isCatalog ? 3.8 + (h % 11) / 10 : 0,
-      ratings,
-      reviews: Math.round(ratings * 0.18),
-      saves: Math.round(ratings * 2.3),
-      change: isCatalog ? 2 + (h % 25) : 0,
-      score,
-      real: { reviews: stat.reviews || 0, ratingSum: stat.ratingSum || 0, likes: stat.likes || 0 },
+      // activity = reviews + likes in that period (drives the Trending tabs)
+      score: { week: s.week, month: s.month, all: s.reviews + s.likes },
+      change: s.prevWeek >= 5 ? Math.round(((s.week - s.prevWeek) / s.prevWeek) * 100) : 0,
+      real: { reviews: s.reviews, ratingSum: s.ratingSum, likes: s.likes },
       // fallback illustration if there's no photo
       look: { shape: ["rect", "tall", "round"][h % 3], liquid: LIQUID[tags[0]] || "#e3e6e4", cap: "#2b2f2d" },
     };
   }
-
-  const users = {
-    camille: { name: "Camille R.", initials: "CR", level: "Top reviewer", reviews: 142, followers: "2.1k", tone: 0 },
-    julien:  { name: "Julien M.",  initials: "JM", level: "Collector",    reviews: 87,  followers: "940",  tone: 1 },
-    noa:     { name: "Noa L.",     initials: "NL", level: "Rising",       reviews: 34,  followers: "312",  tone: 2 },
-    sam:     { name: "Sam K.",     initials: "SK", level: "Top reviewer", reviews: 201, followers: "3.4k", tone: 3 },
-    maya:    { name: "Maya T.",    initials: "MT", level: "Member",       reviews: 12,  followers: "86",   tone: 4 },
-    leo:     { name: "Leo A.",     initials: "LA", level: "Member",       reviews: 19,  followers: "120",  tone: 1 },
-  };
-
-  const reviews = [
-    {
-      user: "camille", perfume: "dior-sauvage", rating: 4.5, posted: "2h ago",
-      text: "Fresh and peppery, and pretty loud for the first hour. It settles into a clean, ambery skin scent that lasts all day. Easy compliment-getter — just know a lot of people wear it.",
-      traits: { Longevity: "8h+", Sillage: "Strong", Season: "All year" },
-      likes: 124, comments: 18,
-    },
-    {
-      user: "sam", perfume: "lattafa-yara", rating: 5, posted: "5h ago",
-      text: "Sweet tropical fruit and creamy vanilla over a soft musk. Cozy and very easy to like — perfect for cooler evenings. Two sprays is plenty, it projects more than you'd think.",
-      traits: { Longevity: "10h", Sillage: "Strong", Season: "Winter" },
-      likes: 98, comments: 11,
-    },
-    {
-      user: "noa", perfume: "dolce-gabbana-light-blue", rating: 4, posted: "Yesterday",
-      text: "Crisp lemon and green apple — summer holiday in a bottle. It fades after a few hours, so I keep a travel spray in my bag.",
-      traits: { Longevity: "5h", Sillage: "Soft", Season: "Summer" },
-      likes: 76, comments: 9,
-    },
-  ];
-
-  // First 3 entries are "incoming" live events; the rest seed the feed.
-  const activityPool = [
-    { user: "maya",    html: "added <strong>Gucci Bloom</strong> to their wishlist",     time: "just now" },
-    { user: "leo",     html: "rated <strong>Tom Ford Ombre Leather</strong> ★ 4.5",     time: "just now" },
-    { user: "julien",  html: "started a discussion: <strong>Best vanilla for winter?</strong>", time: "just now" },
-    { user: "noa",     html: "added <strong>Chanel No 5</strong> to their collection",  time: "4m ago" },
-    { user: "camille", html: "reviewed <strong>Dior Sauvage</strong>",                  time: "12m ago" },
-    { user: "sam",     html: "followed <strong>Maya T.</strong>",                        time: "18m ago" },
-    { user: "maya",    html: "asked: <strong>Something like Gypsy Water but lighter?</strong>", time: "24m ago" },
-    { user: "leo",     html: "saved <strong>Xerjoff Naxos</strong>",                    time: "31m ago" },
-  ];
-
-  const topReviewers = ["sam", "camille", "julien", "noa"];
-  const onlineUsers = ["camille", "sam", "noa", "maya", "leo"];
 
   /* =======================================================
      Helpers
@@ -141,27 +78,45 @@
     return String(n);
   }
 
+  function timeAgo(iso) {
+    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return "just now";
+    if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+    if (s < 7 * 86400) return `${Math.floor(s / 86400)}d ago`;
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  }
+
   const AVATAR_TONES = [
     ["#e6efe9", "#3f6b56"], ["#e4ecf3", "#3d6283"], ["#efe9f3", "#6a4f83"],
     ["#f3ece4", "#83613d"], ["#e9eef0", "#4b5f66"],
   ];
-  // `who` is a sample member key ("camille") or an author object { initials, tone }
+  // `who` is an author object { initials, tone }
   function avatar(who, size = "") {
-    const u = typeof who === "string" ? users[who] : who;
-    const [bg, fg] = AVATAR_TONES[u.tone % AVATAR_TONES.length];
-    return `<span class="avatar ${size}" style="--avatar-bg:${bg};--avatar-fg:${fg}" aria-hidden="true">${escapeHTML(u.initials)}</span>`;
+    const [bg, fg] = AVATAR_TONES[who.tone % AVATAR_TONES.length];
+    return `<span class="avatar ${size}" style="--avatar-bg:${bg};--avatar-fg:${fg}" aria-hidden="true">${escapeHTML(who.initials)}</span>`;
   }
+
+  const initialsOf = (name) => String(name).trim().split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase() || "?";
+
+  // A member as shown next to reviews, activity, lists
+  function authorFromUser(u) {
+    return { name: u.displayName, username: u.username, level: "Member", initials: initialsOf(u.displayName), tone: hash(u.username) % 5 };
+  }
+
+  const profileLink = (u, text = u.displayName) =>
+    `<a class="member-link" href="#profile/${encodeURIComponent(u.username)}">${escapeHTML(text)}</a>`;
 
   const ICON = {
     star: '<svg viewBox="0 0 20 20" aria-hidden="true"><path fill="currentColor" d="M10 1.8l2.4 5.2 5.7.6-4.3 3.9 1.2 5.6L10 14.2l-5 2.9 1.2-5.6L1.9 7.6l5.7-.6z"/></svg>',
     heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.1a4.3 4.3 0 0 1 7.5 2.7C19.5 15.4 12 20 12 20z"/></svg>',
-    bookmark: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16l-6-4-6 4z"/></svg>',
+    thumb: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11v9H4v-9zM7 11l4-8a2 2 0 0 1 2 2v4h5.5a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.3 20H7"/></svg>',
     comment: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/></svg>',
     share: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7M12 3v12M7 8l5-5 5 5"/></svg>',
     up: '<svg viewBox="0 0 24 24" aria-hidden="true" width="12" height="12"><path d="M7 14l5-5 5 5"/></svg>',
   };
 
-  /* ---------- Bottle thumbnail (placeholder product image) ---------- */
+  /* ---------- Bottle thumbnail (fallback product image) ---------- */
   const SHAPES = {
     rect:  { body: '<rect x="13" y="30" width="34" height="42" rx="5"/>', cap: '<rect x="22" y="13" width="16" height="13" rx="2"/>', neck: [26, 25, 8, 6], liquid: 40 },
     tall:  { body: '<rect x="18" y="24" width="24" height="48" rx="4"/>', cap: '<rect x="24" y="7" width="12" height="14" rx="2"/>', neck: [27, 20, 6, 5], liquid: 34 },
@@ -192,11 +147,8 @@
 
   /* ---------- Perfume image (shared by every perfume visual) ----------
      Always renders the same `.perfume-media` frame; sizing, padding and
-     centering are handled entirely in CSS.
-     - p.image      optional photo URL (e.g. from the API later)
-     - p.imageZoom  optional fine-tune for photos with lots of empty space
-     Without a photo, or if the photo fails to load, the illustrated
-     bottle is shown in the same frame. */
+     centering are handled entirely in CSS. Without a photo, or if the
+     photo fails to load, the illustrated bottle is shown instead. */
   function perfumeMedia(p, size = "") {
     const classes = ["perfume-media", size && `perfume-media--${size}`, p.image && "has-photo"]
       .filter(Boolean).join(" ");
@@ -218,12 +170,17 @@
     el.textContent = message;
     el.hidden = false;
     clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => { el.hidden = true; }, 2200);
+    toast.timer = setTimeout(() => { el.hidden = true; }, 2400);
   }
 
   /* =======================================================
      Renderers
      ======================================================= */
+  function ratingFor(p) {
+    const count = p.real.reviews;
+    return { avg: count ? p.real.ratingSum / count : 0, count, reviews: count };
+  }
+
   function ratingRow(p) {
     const r = ratingFor(p);
     if (!r.count) return `<div class="rating rating--empty">No ratings yet</div>`;
@@ -235,12 +192,9 @@
           </div>`;
   }
 
-  function perfumeCard(p, { rank, match, reason } = {}) {
-    const badge = match
-      ? `<span class="match">${match}% match</span>`
-      : rank ? `<span class="rank">#${rank}</span>` : "";
-    const trend = !match && p.change ? `<span class="trend">${ICON.up}${p.change}%</span>` : "";
-
+  function perfumeCard(p, { rank } = {}) {
+    const badge = rank ? `<span class="rank">#${rank}</span>` : "";
+    const trend = p.change > 0 ? `<span class="trend">${ICON.up}${p.change}%</span>` : "";
     return `
       <article class="perfume-card" data-perfume="${p.id}">
         <div class="perfume-card__media">
@@ -248,42 +202,52 @@
           ${perfumeMedia(p)}
         </div>
         <div class="perfume-card__body">
-          <p class="perfume-card__brand">${escapeHTML(p.brand)}</p>
+          <p class="perfume-card__brand">${escapeHTML(p.brand) || "&nbsp;"}</p>
           <h3 class="perfume-card__name"><a href="#perfume/${p.id}">${escapeHTML(p.name)}</a></h3>
           ${ratingRow(p)}
-          ${reason
-            ? `<p class="perfume-card__reason">${escapeHTML(reason)}</p>`
-            : `<div class="perfume-card__notes">${p.notes.map((n) => `<span class="chip">${escapeHTML(n)}</span>`).join("")}</div>`}
+          <div class="perfume-card__notes">${p.notes.map((n) => `<span class="chip">${escapeHTML(n)}</span>`).join("")}</div>
           <div class="perfume-card__actions">
-            <button class="action-btn" data-action="save" data-count="${p.saves}" aria-pressed="false" aria-label="Save ${escapeHTML(p.name)}">
-              ${ICON.bookmark}<span>${formatCount(p.saves)}</span>
+            <button class="action-btn" data-action="love" data-id="${p.id}" aria-pressed="${isLiked(p.id)}" aria-label="Like ${escapeHTML(p.name)}">
+              ${ICON.heart}<span data-like-count="${p.id}">${formatCount(p.real.likes)}</span>
             </button>
             <button class="action-btn" data-action="review" aria-label="Reviews of ${escapeHTML(p.name)}">
-              ${ICON.comment}<span>${formatCount(ratingFor(p).reviews)}</span>
-            </button>
-            <button class="action-btn action-btn--icon" data-action="love" data-id="${p.id}" aria-pressed="${isLiked(p.id)}" aria-label="Like ${escapeHTML(p.name)}">
-              ${ICON.heart}
+              ${ICON.comment}<span>${formatCount(p.real.reviews)}</span>
             </button>
           </div>
         </div>
       </article>`;
   }
 
-  function reviewCard(r) {
-    const u = users[r.user];
-    const p = byId(r.perfume);
-    const traits = Object.entries(r.traits)
-      .map(([k, v]) => `<span class="chip">${k}<strong>${escapeHTML(v)}</strong></span>`).join("");
+  // "Helpful" button on a review (members can't vote on their own)
+  function helpfulButton(r) {
+    const mine = session.user && r.user && r.user.username === session.user.username;
+    return `
+      <button class="social-btn" data-helpful="${r.id}" aria-pressed="${!!r.likedByMe}" ${mine ? "disabled" : ""}
+              aria-label="Mark review as helpful" title="${mine ? "Your review" : "Helpful"}">
+        ${ICON.thumb}<span>${r.likes || 0}</span> <span class="social-btn__label">Helpful</span>
+      </button>`;
+  }
 
+  function followButton(username, extra = "") {
+    if (session.user && session.user.username === username) return "";
+    const on = isFollowing(username);
+    return `<button class="btn btn--ghost btn--sm btn--follow ${extra}" data-follow="${escapeHTML(username)}" aria-pressed="${on}">${on ? "Following" : "Follow"}</button>`;
+  }
+
+  // Review card used on the homepage and the "All reviews" page
+  function reviewCard(r) {
+    const p = byId(r.perfume);
+    if (!p || !r.user) return "";
+    const author = authorFromUser(r.user);
     return `
       <article class="review">
         <header class="review__head">
-          ${avatar(r.user)}
+          <a href="#profile/${encodeURIComponent(r.user.username)}" aria-hidden="true" tabindex="-1">${avatar(author)}</a>
           <div>
-            <p class="review__user">${escapeHTML(u.name)} <span class="review__level">${u.level}</span></p>
-            <p class="review__meta">${u.reviews} reviews · ${r.posted}</p>
+            <p class="review__user">${profileLink(r.user)}</p>
+            <p class="review__meta">@${escapeHTML(r.user.username)} · ${timeAgo(r.createdAt)}</p>
           </div>
-          <button class="btn btn--ghost btn--sm btn--follow review__follow" data-action="follow" aria-pressed="false">Follow</button>
+          ${followButton(r.user.username, "review__follow")}
         </header>
 
         <a href="#perfume/${p.id}" class="review__perfume">
@@ -299,41 +263,48 @@
         </a>
 
         <p class="review__text">${escapeHTML(r.text)}</p>
-        <div class="review__traits">${traits}</div>
 
         <footer class="review__actions">
-          <button class="social-btn" data-action="like" data-count="${r.likes}" aria-pressed="false" aria-label="Like review">
-            ${ICON.heart}<span>${r.likes}</span>
-          </button>
-          <button class="social-btn" data-action="comment" aria-label="${r.comments} comments">
-            ${ICON.comment}<span>${r.comments}</span>
-          </button>
-          <button class="social-btn" data-action="share" aria-label="Share review">
+          ${helpfulButton(r)}
+          <button class="social-btn" data-action="comment">${ICON.comment}<span>Reply</span></button>
+          <button class="social-btn" data-action="share" data-share="#perfume/${p.id}" aria-label="Share review">
             ${ICON.share}<span>Share</span>
           </button>
         </footer>
       </article>`;
   }
 
-  function activityItem(a, isNew = false) {
-    const u = users[a.user];
+  function activityText(a) {
+    const p = a.perfume && byId(a.perfume);
+    const perfumeLink = p ? `<a class="activity__perfume" href="#perfume/${p.id}">${escapeHTML(`${p.brand ? p.brand + " " : ""}${p.name}`)}</a>` : "a perfume";
+    switch (a.type) {
+      case "review": return `rated ${perfumeLink} <span class="activity__stars">★ ${a.rating}</span>`;
+      case "like": return `liked ${perfumeLink}`;
+      case "follow": return `started following ${profileLink(a.target)}`;
+      case "added": return `added ${perfumeLink} to LUMIERE`;
+      case "joined": return `joined <a class="activity__perfume" href="#group/${encodeURIComponent(a.group.slug)}">${escapeHTML(a.group.name)}</a>`;
+      case "posted": return `posted in <a class="activity__perfume" href="#group/${encodeURIComponent(a.group.slug)}">${escapeHTML(a.group.name)}</a>`;
+      default: return "";
+    }
+  }
+
+  function activityItem(a) {
     return `
-      <li class="activity__item${isNew ? " is-new" : ""}">
-        ${avatar(a.user, "avatar--sm")}
-        <p><strong>${escapeHTML(u.name)}</strong> ${a.html}<span class="activity__time">${a.time}</span></p>
+      <li class="activity__item">
+        <a href="#profile/${encodeURIComponent(a.user.username)}" aria-hidden="true" tabindex="-1">${avatar(authorFromUser(a.user), "avatar--sm")}</a>
+        <p>${profileLink(a.user)} ${activityText(a)}<span class="activity__time">${timeAgo(a.at)}</span></p>
       </li>`;
   }
 
-  function reviewerItem(key) {
-    const u = users[key];
+  function reviewerItem(u) {
     return `
       <li class="reviewer">
-        ${avatar(key)}
+        <a href="#profile/${encodeURIComponent(u.username)}" aria-hidden="true" tabindex="-1">${avatar(authorFromUser(u))}</a>
         <div>
-          <p class="reviewer__name">${escapeHTML(u.name)}</p>
-          <p class="reviewer__meta">${u.reviews} reviews · ${u.followers} followers</p>
+          <p class="reviewer__name">${profileLink(u)}</p>
+          <p class="reviewer__meta">${u.reviews} reviews · <span data-followers-of="${escapeHTML(u.username)}">${formatCount(u.followers)}</span> followers</p>
         </div>
-        <button class="btn btn--ghost btn--sm btn--follow" data-action="follow" aria-pressed="false">Follow</button>
+        ${followButton(u.username)}
       </li>`;
   }
 
@@ -342,9 +313,19 @@
      ======================================================= */
   const state = { period: "week", family: "all", query: "" };
 
+  const PERIOD_LABEL = {
+    week: "Most liked and reviewed this week",
+    month: "Most liked and reviewed this month",
+    all: "Most liked and reviewed of all time",
+  };
+
   function matchesQuery(p, q) {
     const hay = [p.name, p.brand, ...p.notes, ...p.tags].join(" ").toLowerCase();
     return q.toLowerCase().split(/\s+/).filter(Boolean).every((word) => hay.includes(word));
+  }
+
+  function rankedPerfumes(period = "week") {
+    return [...perfumes].sort((a, b) => b.score[period] - a.score[period] || b.real.reviews - a.real.reviews);
   }
 
   function renderFilterBar() {
@@ -359,7 +340,7 @@
     const title = $("#trending .section-title");
     const sub = $("#trending .section-sub");
 
-    let list = [...perfumes].sort((a, b) => b.score[state.period] - a.score[state.period]);
+    let list = rankedPerfumes(state.period);
     const ranks = new Map(list.map((p, i) => [p.id, i + 1]));
 
     if (state.family !== "all") list = list.filter((p) => p.tags.includes(state.family));
@@ -370,7 +351,7 @@
       sub.innerHTML = `${list.length} result${list.length === 1 ? "" : "s"} for “${escapeHTML(state.query)}” · <button class="link link--btn" id="clearSearch">Clear search</button>`;
     } else {
       title.textContent = "Trending perfumes";
-      sub.textContent = "Most saved and reviewed by the community";
+      sub.textContent = PERIOD_LABEL[state.period];
     }
 
     const track = $("#trendingGrid");
@@ -423,7 +404,10 @@
     renderTrending();
     $$("[data-search] input").forEach((i) => { i.value = state.query; });
     closeAllSuggestions();
-    if (state.query) $("#trending").scrollIntoView({ behavior: "smooth" });
+    if (state.query) {
+      if (location.hash && location.hash !== "#trending") location.hash = "";
+      $("#trending").scrollIntoView({ behavior: "smooth" });
+    }
   }
 
   function initTrending() {
@@ -459,7 +443,7 @@
   }
 
   /* =======================================================
-     Search with suggestions (header + hero)
+     Search with suggestions (header + hero): perfumes + members
      ======================================================= */
   function closeAllSuggestions() {
     $$(".search-suggest").forEach((s) => { s.hidden = true; s.innerHTML = ""; });
@@ -470,24 +454,58 @@
       const input = $("input", form);
       const box = $(".search-suggest", form);
       let active = -1;
+      let memberTimer = 0;
+      let memberReq = 0;
+      let members = [];
 
-      const update = () => {
+      const render = () => {
         const q = input.value.trim();
-        active = -1;
         if (!q) { box.hidden = true; return; }
         const hits = perfumes.filter((p) => matchesQuery(p, q)).slice(0, 5);
-        box.innerHTML = hits.length
-          ? hits.map((p) => `
-              <button type="button" class="suggest-item" data-name="${escapeHTML(p.name)}" data-id="${p.id}">
-                ${perfumeMedia(p, "xs")}
-                <span><span class="suggest-item__name">${escapeHTML(p.name)}</span><br><span class="suggest-item__meta">${escapeHTML(p.brand)} · ${p.notes.slice(0, 2).join(", ")}</span></span>
-                <span class="suggest-item__rating">★ ${p.rating.toFixed(1)}</span>
-              </button>`).join("")
-          : `<p class="suggest-empty">No perfumes found for “${escapeHTML(q)}”</p>`;
+        const perfumeRows = hits.map((p) => {
+          const r = ratingFor(p);
+          const meta = [p.brand, p.notes.slice(0, 2).join(", ")].filter(Boolean).join(" · ");
+          return `
+            <button type="button" class="suggest-item" data-id="${p.id}">
+              ${perfumeMedia(p, "xs")}
+              <span><span class="suggest-item__name">${escapeHTML(p.name)}</span><br><span class="suggest-item__meta">${escapeHTML(meta)}</span></span>
+              <span class="suggest-item__rating">${r.count ? `★ ${r.avg.toFixed(1)}` : ""}</span>
+            </button>`;
+        }).join("");
+        const memberRows = members.map((u) => `
+            <button type="button" class="suggest-item" data-user="${escapeHTML(u.username)}">
+              ${avatar(authorFromUser(u))}
+              <span><span class="suggest-item__name">${escapeHTML(u.displayName)}</span><br><span class="suggest-item__meta">@${escapeHTML(u.username)}</span></span>
+            </button>`).join("");
+        box.innerHTML = (perfumeRows ? `<p class="suggest-group">Perfumes</p>${perfumeRows}` : "")
+          + (memberRows ? `<p class="suggest-group">Members</p>${memberRows}` : "")
+          || `<p class="suggest-empty">Nothing found for “${escapeHTML(q)}”</p>`;
         box.hidden = false;
+        active = -1;
       };
 
-      input.addEventListener("input", update);
+      const update = () => {
+        render();
+        clearTimeout(memberTimer);
+        const q = input.value.trim();
+        if (q.length < 2) { members = []; return; }
+        memberTimer = setTimeout(async () => {
+          const id = ++memberReq;
+          try {
+            const res = await api(`/members?search=${encodeURIComponent(q)}&limit=4`);
+            if (id === memberReq && input.value.trim() === q) { members = res.users; render(); }
+          } catch (err) { /* perfumes still work without member results */ }
+        }, 250);
+      };
+
+      const choose = (item) => {
+        closeAllSuggestions();
+        input.blur();
+        if (item.dataset.user) location.hash = `profile/${encodeURIComponent(item.dataset.user)}`;
+        else openPerfume(item.dataset.id);
+      };
+
+      input.addEventListener("input", () => { members = []; update(); });
       input.addEventListener("focus", update);
 
       input.addEventListener("keydown", (e) => {
@@ -501,13 +519,13 @@
 
       box.addEventListener("click", (e) => {
         const item = e.target.closest(".suggest-item");
-        if (item) { closeAllSuggestions(); input.blur(); openPerfume(item.dataset.id); }
+        if (item) choose(item);
       });
 
       form.addEventListener("submit", (e) => {
         e.preventDefault();
         const chosen = $(".suggest-item.is-active", box);
-        if (chosen) { closeAllSuggestions(); input.blur(); openPerfume(chosen.dataset.id); }
+        if (chosen) choose(chosen);
         else runSearch(input.value);
       });
     });
@@ -521,45 +539,33 @@
   }
 
   /* =======================================================
-     Social interactions (save, like, follow, share…)
-     Likes are saved to your account; the rest are placeholders.
+     Social: likes, follows, helpful votes, share
      ======================================================= */
-  function togglePressed(btn) {
-    const on = btn.getAttribute("aria-pressed") !== "true";
-    btn.setAttribute("aria-pressed", String(on));
-    return on;
-  }
-
-  function toggleCount(btn, format = String) {
-    const on = togglePressed(btn);
-    $("span", btn).textContent = format(Number(btn.dataset.count) + (on ? 1 : 0));
-    return on;
-  }
-
   function initSocial() {
     document.addEventListener("click", (e) => {
+      const follow = e.target.closest("[data-follow]");
+      if (follow) { toggleFollow(follow.dataset.follow); return; }
+
+      const helpful = e.target.closest("[data-helpful]");
+      if (helpful) { toggleHelpful(helpful); return; }
+
+      const join = e.target.closest("[data-join]");
+      if (join) { toggleMembership(join.dataset.join); return; }
+
       const btn = e.target.closest("[data-action]");
       if (!btn) return;
-
       switch (btn.dataset.action) {
-        case "save":
-          toast(toggleCount(btn, formatCount) ? "Saved to your collection" : "Removed from your collection");
-          break;
         case "love": {
           const p = byId(btn.dataset.id);
           if (p) toggleLike(p);
           break;
         }
-        case "like":
-          toggleCount(btn);
-          break;
-        case "follow":
-          btn.textContent = togglePressed(btn) ? "Following" : "Follow";
-          break;
-        case "share":
-          if (navigator.clipboard) navigator.clipboard.writeText(location.href).catch(() => {});
+        case "share": {
+          const url = btn.dataset.share ? `${location.origin}${location.pathname}${btn.dataset.share}` : location.href;
+          if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
           toast("Link copied");
           break;
+        }
         case "review": {
           const card = btn.closest("[data-perfume]");
           if (card) openPerfume(card.dataset.perfume, "reviews");
@@ -573,19 +579,70 @@
     });
   }
 
-  /* ---------- Live activity feed (simulated) ---------- */
-  function initActivity() {
+  /* =======================================================
+     Homepage community: popular reviews, activity, top reviewers
+     ======================================================= */
+  let activityScope = "all";
+  let popularReviews = [];
+
+  async function loadPopularReviews() {
+    const list = $("#reviewList");
+    try {
+      const res = await api("/reviews?sort=popular&limit=3");
+      popularReviews = res.reviews;
+      list.innerHTML = popularReviews.map(reviewCard).join("") || '<p class="pv__empty">No reviews yet.</p>';
+    } catch (err) {
+      list.innerHTML = `<p class="pv__empty">${escapeHTML(err.message)}</p>`;
+    }
+  }
+
+  async function loadTopReviewers() {
+    try {
+      const res = await api("/members/top?limit=5");
+      $("#topReviewers").innerHTML = res.users.slice(0, 4).map(reviewerItem).join("");
+      $("#onlineAvatars").innerHTML = res.users.map((u) => avatar(authorFromUser(u))).join("");
+    } catch (err) { /* sidebar stays empty */ }
+  }
+
+  function renderActivityTabs() {
+    const tabs = $("#activityTabs");
+    tabs.hidden = !session.user;
+    $$("[data-scope]", tabs).forEach((b) => b.setAttribute("aria-selected", String(b.dataset.scope === activityScope)));
+    $("#activityTitle").textContent = activityScope === "following" ? "People you follow" : "Community activity";
+  }
+
+  async function loadActivity() {
     const feed = $("#activityFeed");
-    feed.innerHTML = activityPool.slice(3).map((a) => activityItem(a)).join("");
+    renderActivityTabs();
+    feed.classList.add("is-loading");
+    try {
+      const res = await api(`/activity?scope=${activityScope}&limit=8`);
+      if (activityScope === "following" && !res.followingCount) {
+        feed.innerHTML = `<li class="activity__empty">You're not following anyone yet. Tap <strong>Follow</strong> on a reviewer to see their activity here.</li>`;
+      } else {
+        feed.innerHTML = res.items.map(activityItem).join("") || '<li class="activity__empty">No activity yet.</li>';
+      }
+    } catch (err) {
+      feed.innerHTML = `<li class="activity__empty">${escapeHTML(err.message)}</li>`;
+    }
+    feed.classList.remove("is-loading");
+  }
 
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  function initCommunity() {
+    $("#activityTabs").addEventListener("click", (e) => {
+      const tab = e.target.closest("[data-scope]");
+      if (!tab || tab.dataset.scope === activityScope) return;
+      activityScope = tab.dataset.scope;
+      loadActivity();
+    });
+  }
 
-    let next = 0;
-    const timer = setInterval(() => {
-      feed.insertAdjacentHTML("afterbegin", activityItem(activityPool[next], true));
-      while (feed.children.length > 5) feed.lastElementChild.remove();
-      if (++next === 3) clearInterval(timer);   // only 3 simulated events
-    }, 9000);
+  // Signed in -> show people you follow by default (if you follow anyone)
+  function refreshCommunity() {
+    activityScope = session.user && session.following.size ? "following" : "all";
+    loadActivity();
+    loadPopularReviews();
+    loadTopReviewers();
   }
 
   /* ---------- Mobile navigation ---------- */
@@ -603,9 +660,9 @@
   }
 
   /* =======================================================
-     Perfume page  (#perfume/<id>)
-     Everything below is generated placeholder community data,
-     stable per perfume, until real reviews come from the backend.
+     Perfume page data: default pros & cons and performance/season
+     votes are generated per perfume (scaled to its real review count);
+     reviews, ratings and likes are real.
      ======================================================= */
   const PRO_POOL = {
     general: ["Gets lots of compliments", "Smells expensive", "Unique — not generic",
@@ -657,8 +714,6 @@
   };
   const BASE_LONGEVITY = { fresh: 2, citrus: 2, floral: 3, musk: 3, woody: 4, spicy: 4, amber: 4, gourmand: 4 };
 
-  const REVIEW_USERS = ["camille", "julien", "noa", "sam", "maya", "leo"];
-  const POSTED = ["2h ago", "Yesterday", "3 days ago", "1 week ago", "2 weeks ago", "1 month ago"];
 
   const SEASONS = ["Spring", "Summer", "Fall", "Winter"];
   const TIMES = ["Day", "Night"];
@@ -706,17 +761,6 @@
     return Math.max(1, Math.min(5, Math.round(mean)));
   }
 
-  const initialsOf = (name) => String(name).trim().split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase() || "?";
-
-  // Author shown on a review: a sample community member or a real account
-  function authorFromKey(key) {
-    const u = users[key];
-    return { name: u.name, level: u.level, initials: u.initials, tone: u.tone };
-  }
-  function authorFromUser(u) {
-    return { name: u.displayName, username: u.username, level: "Member", initials: initialsOf(u.displayName), tone: hash(u.username) % 5 };
-  }
-
   /* ---------- Generated community data (catalog perfumes only) ---------- */
   const baseCache = {};
 
@@ -724,19 +768,19 @@
     if (baseCache[p.id]) return baseCache[p.id];
     const h = hash(p.id);
     const fam = p.tags;
-    const isCatalog = p.source === "catalog";
+    const reviewCount = p.real.reviews;
 
-    // Performance (1–5); perfumes added by members start with no votes
+    // Performance (1–5); perfumes nobody reviewed yet start with no votes
     const famLong = fam.length ? Math.round(fam.reduce((s, t) => s + BASE_LONGEVITY[t], 0) / fam.length) : 3;
     const known = KNOWN_PERFORMANCE[p.id] || {};
     const longevity = known.longevity || Math.max(1, Math.min(5, famLong + ((h >> 3) % 3) - 1));
     const sillage = known.sillage || Math.max(1, Math.min(5, longevity + ((h >> 5) % 3) - 1));
     const value = 2 + ((h >> 7) % 4);
-    const votes = isCatalog ? Math.round(p.ratings * 0.4) : 0;
+    const votes = Math.round(reviewCount * 0.6);
 
-    // Default pros & cons (consistent with performance for catalog perfumes)
+    // Default pros & cons (consistent with performance when there are votes)
     const pros = [], cons = [];
-    if (isCatalog) {
+    if (votes) {
       if (longevity >= 4) pros.push("Long-lasting — still there the next morning");
       if (longevity <= 2) cons.push("Fades after a few hours");
       if (sillage >= 4) cons.push("Too loud for small offices");
@@ -750,7 +794,7 @@
 
     const toItems = (list, max, k) => [...new Set(list)].slice(0, max).map((text, i) => ({
       text,
-      votes: isCatalog ? Math.max(4, Math.round(p.reviews * (0.9 - i * 0.17)) - (hash(text + p.id) % 15) * k) : 0,
+      votes: votes ? Math.max(1, Math.round(reviewCount * (0.7 - i * 0.12)) - (hash(text + p.id) % 7) * k) : 0,
     })).sort((a, b) => b.votes - a.votes);
 
     // When to wear: family leaning -> vote counts
@@ -761,79 +805,34 @@
       return Object.fromEntries(keys.map((k) => [k, Math.round((lean[k] / total) * votes)]));
     };
 
-    // Star breakdown that matches the average rating
-    const weights = [1, 2, 3, 4, 5].map((star) => Math.exp(-((star - p.rating) ** 2) / 0.9));
-    const wSum = sum(weights);
-
     const details = {
       pros: toItems(pros, 5, 1),
       cons: toItems(cons, 4, 2),
       perf: { longevity: spread(longevity, votes), sillage: spread(sillage, votes), value: spread(value, votes) },
       wear: { ...toVotes(SEASONS), ...toVotes(TIMES) },
-      breakdown: weights.map((w) => Math.round((w / wSum) * p.ratings)),   // index 0 = 1★
-      reviews: [],
     };
-
-    if (isCatalog) {
-      details.reviews = pick(REVIEW_USERS, 3, p.id + "u").map((user, i) => {
-        const rating = Math.max(3, Math.min(5, Math.round(p.rating * 2 + ((hash(p.id + user) % 3) - 1)) / 2));
-        const pro = details.pros[i % details.pros.length].text;
-        const con = details.cons[i % details.cons.length].text;
-        const note = p.notes[i % Math.max(1, p.notes.length)];
-        const templates = rating >= 4.5
-          ? [`Honestly one of my favorites. ${pro}, and it just works on my skin. Small downside: ${con.toLowerCase()}.`,
-             `Bought a full bottle after one sample. ${pro}. If I had to nitpick: ${con.toLowerCase()}.`,
-             `This is the one people ask me about. ${pro}${note ? `, and the ${note.toLowerCase()} is gorgeous` : ""}. ${con} — but I don't mind.`]
-          : rating >= 4
-            ? [`Really nice${note ? `, the ${note.toLowerCase()} comes through beautifully` : ""}. ${pro}. Only thing: ${con.toLowerCase()}.`,
-               `Solid choice. ${pro}. ${con}, so I keep it for the right occasions.`,
-               `Grew on me after a few wears. ${pro}, though ${con.toLowerCase()}.`]
-            : [`Good, but not a blind buy. ${pro}, but ${con.toLowerCase()}. Test it on skin first.`,
-               `Mixed feelings. ${pro}, yet ${con.toLowerCase()}. Try a sample before buying.`];
-        return { author: authorFromKey(user), rating, text: templates[i % templates.length], posted: POSTED[hash(p.id + i) % POSTED.length], likes: 5 + (hash(user + p.id) % 90) };
-      });
-
-      const featured = reviews.find((r) => r.perfume === p.id);
-      if (featured) {
-        details.reviews = [
-          { author: authorFromKey(featured.user), rating: featured.rating, text: featured.text, posted: featured.posted, likes: featured.likes },
-          ...details.reviews.filter((r) => r.author.name !== users[featured.user].name).slice(0, 2),
-        ];
-      }
-    }
-
     baseCache[p.id] = details;
     return details;
   }
-
-  // Overall rating = sample ratings (catalog) + real member reviews
-  function ratingFor(p) {
-    const count = p.ratings + p.real.reviews;
-    const total = p.rating * p.ratings + p.real.ratingSum;
-    return { avg: count ? total / count : 0, count, reviews: p.reviews + p.real.reviews };
-  }
-
-  const likesFor = (p) => (p.source === "catalog" ? Math.round(p.saves * 0.6) : 0) + p.real.likes;
 
   function similarPerfumes(p, n = 5) {
     return perfumes
       .filter((o) => o.id !== p.id)
       .map((o) => ({ o, shared: o.tags.filter((t) => p.tags.includes(t)).length }))
-      .sort((a, b) => b.shared - a.shared || b.o.score.week - a.o.score.week)
+      .sort((a, b) => b.shared - a.shared || b.o.score.month - a.o.score.month)
       .slice(0, n)
       .map((x) => x.o);
   }
 
-  // Real member reviews for a perfume (cached on the perfume)
+  // Member reviews + star breakdown for a perfume (cached on the perfume)
   async function loadRealReviews(p) {
     try {
       const data = await api(`/perfumes/${encodeURIComponent(p.id)}/reviews`);
-      p.realReviews = data.reviews.map((r) => ({
-        author: authorFromUser(r.user), rating: r.rating, text: r.text,
-        posted: postedLabel(r.updatedAt || r.createdAt), username: r.user.username, likes: 0, real: true,
-      }));
+      p.realReviews = data.reviews;
+      p.breakdown = data.breakdown;
     } catch (err) {
       p.realReviews = [];
+      p.breakdown = [0, 0, 0, 0, 0];
     }
   }
 
@@ -899,28 +898,24 @@
   }
 
   function reviewItem(r, { mine = false } = {}) {
-    const a = r.author;
-    const name = a.username
-      ? `<a class="review__name-link" href="#profile/${encodeURIComponent(a.username)}">${escapeHTML(a.name)}</a>`
-      : escapeHTML(a.name);
+    const a = authorFromUser(r.user);
     return `
       <article class="pv-review${mine ? " pv-review--mine" : ""}">
         <header class="review__head">
-          ${avatar(a)}
+          <a href="#profile/${encodeURIComponent(r.user.username)}" aria-hidden="true" tabindex="-1">${avatar(a)}</a>
           <div>
-            <p class="review__user">${name} <span class="review__level">${mine ? "Your review" : escapeHTML(a.level)}</span></p>
-            <p class="review__meta">${escapeHTML(r.posted)}</p>
+            <p class="review__user">${profileLink(r.user)}${mine ? ' <span class="review__level">Your review</span>' : ""}</p>
+            <p class="review__meta">@${escapeHTML(r.user.username)} · ${timeAgo(r.updatedAt || r.createdAt)}</p>
           </div>
           <span class="pv-review__score">${stars(r.rating)}<strong>${r.rating.toFixed(1)}</strong></span>
         </header>
         <p class="review__text">${escapeHTML(r.text)}</p>
         <footer class="review__actions">
           ${mine
-            ? `<button class="social-btn" data-edit-review>Edit</button><button class="social-btn" data-delete-review>Delete</button>`
-            : r.real
-              ? `<button class="social-btn" data-action="comment">${ICON.comment}<span>Reply</span></button>`
-              : `<button class="social-btn" data-action="like" data-count="${r.likes}" aria-pressed="false" aria-label="Like review">${ICON.heart}<span>${r.likes}</span></button>
-                 <button class="social-btn" data-action="comment">${ICON.comment}<span>Reply</span></button>`}
+            ? `<span class="social-btn social-btn--static">${ICON.thumb}<span>${r.likes || 0}</span> <span class="social-btn__label">found it helpful</span></span>
+               <button class="social-btn" data-edit-review>Edit</button><button class="social-btn" data-delete-review>Delete</button>`
+            : `${helpfulButton(r)}
+               <button class="social-btn" data-action="comment">${ICON.comment}<span>Reply</span></button>`}
         </footer>
       </article>`;
   }
@@ -960,14 +955,6 @@
       </div>`;
   }
 
-  function postedLabel(iso) {
-    const d = new Date(iso);
-    const days = Math.floor((Date.now() - d.getTime()) / 86400000);
-    if (days < 1) return "Today";
-    if (days === 1) return "Yesterday";
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  }
-
   const BACK_BUTTON = `
     <button class="pv__back" data-back>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg> Back
@@ -984,11 +971,11 @@
     const r = ratingFor(p);
     const me = session.user;
     const real = p.realReviews || [];
-    const myReview = me ? real.find((rv) => rv.username === me.username) : null;
+    const myReview = me ? real.find((rv) => rv.user.username === me.username) : null;
     const others = real.filter((rv) => rv !== myReview);
-    const rankWeek = [...perfumes].sort((a, b) => b.score.week - a.score.week).findIndex((o) => o.id === p.id) + 1;
+    const rankWeek = rankedPerfumes("week").findIndex((o) => o.id === p.id) + 1;
     const familyChips = p.tags.map((t) => `<span class="tag tag--static">${families.find((f) => f.key === t).name}</span>`).join("");
-    const breakdown = base.breakdown.map((c, i) => c + real.filter((rv) => rv.rating === i + 1).length);
+    const breakdown = p.breakdown || [0, 0, 0, 0, 0];
     const perfVotes = sum(base.perf.longevity) + (Object.keys(mine.perf).length ? 1 : 0);
 
     let writeArea = "";
@@ -998,8 +985,9 @@
     const reviewList = [
       myReview && !editingReview ? reviewItem(myReview, { mine: true }) : "",
       ...others.map((rv) => reviewItem(rv)),
-      ...base.reviews.map((rv) => reviewItem(rv)),
     ].join("");
+    const moreNote = r.reviews > real.length && p.realReviews
+      ? `<p class="pv__hint pv__hint--after">Showing the ${real.length} most helpful of ${r.reviews.toLocaleString("en-US")} reviews · <a class="link" href="#all-reviews">See all reviews</a></p>` : "";
     const loading = !p.realReviews ? '<p class="pv__hint">Loading member reviews…</p>' : "";
 
     return `
@@ -1012,7 +1000,7 @@
         <section class="pv__hero">
           <div class="pv__media">
             ${perfumeMedia(p, "lg")}
-            ${p.source === "catalog" ? `<span class="rank">#${rankWeek} this week</span>` : '<span class="rank">New</span>'}
+            <span class="rank">${p.score.all ? `#${rankWeek} this week` : "New"}</span>
           </div>
 
           <div class="pv__info">
@@ -1032,15 +1020,14 @@
             ${p.notes.length ? `<div class="pv__row"><span class="pv__label">Main notes</span><div class="pv__chips">${p.notes.map((n) => `<span class="chip">${escapeHTML(n)}</span>`).join("")}</div></div>` : ""}
 
             <dl class="pv__stats">
-              <div><dt>${formatCount(likesFor(p))}</dt><dd>Likes</dd></div>
-              <div><dt>${formatCount(Math.round(p.saves * 0.35))}</dt><dd>Own it</dd></div>
-              <div><dt>${formatCount(Math.round(p.saves * 0.6))}</dt><dd>Want it</dd></div>
+              <div><dt data-like-count="${p.id}">${formatCount(p.real.likes)}</dt><dd>Likes</dd></div>
+              <div><dt>${formatCount(r.reviews)}</dt><dd>Reviews</dd></div>
+              <div><dt>${formatCount(p.score.week)}</dt><dd>Activity this week</dd></div>
             </dl>
 
             <div class="pv__actions">
               <button class="btn btn--primary" data-write-review>${myReview ? "View your review" : "Write a review"}</button>
-              <button class="action-btn" data-action="save" data-count="${p.saves}" aria-pressed="false">${ICON.bookmark}<span>${formatCount(p.saves)}</span></button>
-              <button class="action-btn action-btn--icon" data-action="love" data-id="${p.id}" aria-pressed="${isLiked(p.id)}" aria-label="Like ${escapeHTML(p.name)}">${ICON.heart}</button>
+              <button class="action-btn" data-action="love" data-id="${p.id}" aria-pressed="${isLiked(p.id)}" aria-label="Like ${escapeHTML(p.name)}">${ICON.heart}<span>${isLiked(p.id) ? "Liked" : "Like"}</span></button>
               <button class="action-btn action-btn--icon" data-action="share" aria-label="Share">${ICON.share}</button>
             </div>
           </div>
@@ -1074,6 +1061,7 @@
               <div class="pv__reviews">
                 ${reviewList || (p.realReviews ? '<p class="pv__empty">No reviews yet — be the first to share your opinion.</p>' : "")}
               </div>
+              ${moreNote}
             </section>
           </div>
 
@@ -1119,6 +1107,7 @@
   let profileData = null;
   let profileTab = "liked";
   let editingProfile = false;
+  let profileList = null;   // { kind: "followers"|"following", users, total } for the open tab
 
   function profileReview(rv) {
     const p = byId(rv.perfume);
@@ -1133,10 +1122,37 @@
           </span>
         </a>
         <div class="profile-review__body">
-          <div class="profile-review__meta">${stars(rv.rating)}<strong>${rv.rating}.0</strong><span>· ${postedLabel(rv.updatedAt || rv.createdAt)}</span></div>
+          <div class="profile-review__meta">${stars(rv.rating)}<strong>${rv.rating}.0</strong><span>· ${timeAgo(rv.updatedAt || rv.createdAt)}</span></div>
           <p>${escapeHTML(rv.text)}</p>
+          <div class="profile-review__actions">${helpfulButton(rv)}</div>
         </div>
       </article>`;
+  }
+
+  function memberRow(u) {
+    return `
+      <li class="member-row">
+        <a href="#profile/${encodeURIComponent(u.username)}" aria-hidden="true" tabindex="-1">${avatar(authorFromUser(u))}</a>
+        <div class="member-row__info">
+          <p class="member-row__name">${profileLink(u)}</p>
+          <p class="member-row__meta">@${escapeHTML(u.username)}${u.bio ? ` · ${escapeHTML(u.bio)}` : ""}</p>
+        </div>
+        ${followButton(u.username)}
+      </li>`;
+  }
+
+  async function loadProfileList(kind) {
+    const username = profileData.user.username;
+    profileList = null;
+    try {
+      const res = await api(`/users/${encodeURIComponent(username)}/${kind}?limit=60`);
+      if (profileData && profileData.user.username === username && profileTab === kind) {
+        profileList = { kind, ...res };
+        refreshPage();
+      }
+    } catch (err) {
+      toast(err.message);
+    }
   }
 
   function renderProfilePage() {
@@ -1150,7 +1166,10 @@
     const tabs = [
       ["liked", "Liked", liked.length],
       ["reviews", "Reviews", userReviews.length],
-      ["added", "Added perfumes", addedPerfumes.length],
+      ["added", "Added", addedPerfumes.length],
+      ["groups", "Groups", (profileData.groups || []).length],
+      ["followers", "Followers", profileData.followers],
+      ["following", "Following", profileData.following],
     ];
 
     let content = "";
@@ -1162,10 +1181,28 @@
       content = userReviews.length
         ? `<div class="profile-reviews">${userReviews.map(profileReview).join("")}</div>`
         : `<p class="pv__empty">${who} written any reviews yet.${isMe ? " Open a perfume and tap “Write a review”." : ""}</p>`;
-    } else {
+    } else if (profileTab === "groups") {
+      const joined = profileData.groups || [];
+      const full = joined.map((g) => (groups.list || []).find((x) => x.slug === g.slug) || { ...g, description: "", members: 0, postsThisWeek: 0 });
+      content = full.length
+        ? `<div class="group-grid">${full.map(groupCard).join("")}</div>`
+        : `<p class="pv__empty">${isMe ? "You haven't" : `${escapeHTML(user.displayName)} hasn't`} joined any groups yet.${isMe ? ' <a class="link" href="#groups">Browse groups</a>' : ""}</p>`;
+    } else if (profileTab === "added") {
       content = addedPerfumes.length
         ? `<div class="perfume-grid">${addedPerfumes.map((p) => perfumeCard(p)).join("")}</div>`
         : `<p class="pv__empty">${who} added any perfumes yet.${isMe ? ' <a class="link" href="#add-perfume">Add a perfume</a>' : ""}</p>`;
+    } else {
+      const label = profileTab === "followers" ? "followers" : "people they follow";
+      if (!profileList || profileList.kind !== profileTab) content = '<p class="pv__empty">Loading…</p>';
+      else if (!profileList.users.length) {
+        content = `<p class="pv__empty">${profileTab === "followers"
+          ? `${isMe ? "You don't" : `${escapeHTML(user.displayName)} doesn't`} have any followers yet.`
+          : `${isMe ? "You aren't" : `${escapeHTML(user.displayName)} isn't`} following anyone yet.`}</p>`;
+      } else {
+        content = `
+          <ul class="member-list">${profileList.users.map(memberRow).join("")}</ul>
+          ${profileList.total > profileList.users.length ? `<p class="pv__hint">Showing the ${profileList.users.length} most recent of ${profileList.total.toLocaleString("en-US")} ${label}.</p>` : ""}`;
+      }
     }
 
     const editForm = `
@@ -1185,6 +1222,9 @@
         </div>
       </form>`;
 
+    const stat = (key, n, label) =>
+      `<button class="profile-stat" data-profile-tab="${key}"><strong>${formatCount(n)}</strong><span>${label}</span></button>`;
+
     return `
       <div class="container pv">
         <nav class="pv__crumbs" aria-label="Breadcrumb">
@@ -1199,22 +1239,28 @@
               <h1 class="profile-head__name">${escapeHTML(user.displayName)}</h1>
               <p class="profile-head__meta">@${escapeHTML(user.username)} · Joined ${joined}</p>
               ${user.bio ? `<p class="profile-head__bio">${escapeHTML(user.bio)}</p>` : ""}`}
-            <dl class="profile-head__stats">
-              <div><dt>${liked.length}</dt><dd>Liked</dd></div>
-              <div><dt>${userReviews.length}</dt><dd>Reviews</dd></div>
-              <div><dt>${addedPerfumes.length}</dt><dd>Added</dd></div>
-            </dl>
+            <div class="profile-head__stats">
+              ${stat("followers", profileData.followers, "Followers")}
+              ${stat("following", profileData.following, "Following")}
+              ${stat("reviews", userReviews.length, "Reviews")}
+              ${stat("liked", liked.length, "Liked")}
+            </div>
           </div>
-          ${isMe && !editingProfile ? `
-            <div class="profile-head__actions">
-              <button class="btn btn--ghost btn--sm" data-edit-profile>Edit profile</button>
-              <a class="btn btn--primary btn--sm" href="#add-perfume">Add a perfume</a>
-              <button class="btn btn--ghost btn--sm" data-logout>Log out</button>
-            </div>` : ""}
+          <div class="profile-head__actions">
+            ${isMe
+              ? (editingProfile ? "" : `
+                <button class="btn btn--ghost btn--sm" data-edit-profile>Edit profile</button>
+                <a class="btn btn--primary btn--sm" href="#add-perfume">Add a perfume</a>
+                <button class="btn btn--ghost btn--sm" data-logout>Log out</button>`)
+              : `${followButton(user.username, "btn--follow-lg")}
+                 ${session.user
+                   ? `<a class="btn btn--ghost btn--follow-lg" href="#messages/${encodeURIComponent(user.username)}">Message</a>`
+                   : `<button class="btn btn--ghost btn--follow-lg" data-auth="signup" data-reason="Join the community to message other members.">Message</button>`}`}
+          </div>
         </section>
 
         <div class="segmented profile-tabs" role="tablist" aria-label="Profile sections">
-          ${tabs.map(([key, label, n]) => `<button role="tab" aria-selected="${profileTab === key}" data-profile-tab="${key}">${label} <span class="tab-count">${n}</span></button>`).join("")}
+          ${tabs.map(([key, label, n]) => `<button role="tab" aria-selected="${profileTab === key}" data-profile-tab="${key}">${label} <span class="tab-count">${formatCount(n)}</span></button>`).join("")}
         </div>
 
         <div class="profile-content">${content}</div>
@@ -1222,11 +1268,87 @@
   }
 
   /* =======================================================
+     All reviews  (#all-reviews)
+     ======================================================= */
+  const allReviews = { sort: "popular", scope: "all", rating: "", items: [], total: 0, hasMore: false, loading: false };
+
+  function renderAllReviewsPage() {
+    const a = allReviews;
+    const seg = (attr, value, label, current) =>
+      `<button role="tab" aria-selected="${current === value}" ${attr}="${value}">${label}</button>`;
+    let body;
+    if (a.loading && !a.items.length) body = '<p class="pv__empty">Loading reviews…</p>';
+    else if (!a.items.length) {
+      body = a.scope === "following"
+        ? '<p class="pv__empty">No reviews from people you follow yet. Follow reviewers you like to see their reviews here.</p>'
+        : '<p class="pv__empty">No reviews match this filter.</p>';
+    } else body = `<div class="review-list">${a.items.map(reviewCard).join("")}</div>`;
+
+    return `
+      <div class="container pv all-reviews">
+        <nav class="pv__crumbs" aria-label="Breadcrumb">
+          ${BACK_BUTTON}
+          <span>Community / <strong>All reviews</strong></span>
+        </nav>
+
+        <div class="section-head">
+          <div>
+            <h1 class="section-title">All reviews</h1>
+            <p class="section-sub">${a.loading && !a.items.length ? "&nbsp;" : `${a.total.toLocaleString("en-US")} review${a.total === 1 ? "" : "s"}`}</p>
+          </div>
+        </div>
+
+        <div class="all-reviews__controls">
+          <div class="segmented" role="tablist" aria-label="Sort reviews">
+            ${seg("data-reviews-sort", "popular", "Most helpful", a.sort)}
+            ${seg("data-reviews-sort", "newest", "Newest", a.sort)}
+          </div>
+          ${session.user ? `
+          <div class="segmented" role="tablist" aria-label="Whose reviews">
+            ${seg("data-reviews-scope", "all", "Everyone", a.scope)}
+            ${seg("data-reviews-scope", "following", "People I follow", a.scope)}
+          </div>` : ""}
+          <div class="all-reviews__ratings" role="group" aria-label="Filter by rating">
+            ${["", "5", "4", "3", "2", "1"].map((r) => `<button class="tag" data-reviews-rating="${r}" aria-pressed="${a.rating === r}">${r ? `${r}★` : "All ratings"}</button>`).join("")}
+          </div>
+        </div>
+
+        <div class="${a.loading && a.items.length ? "is-loading" : ""}">${body}</div>
+
+        ${a.hasMore ? `<div class="all-reviews__more"><button class="btn btn--ghost" data-load-more ${a.loading ? "disabled" : ""}>${a.loading ? "Loading…" : "Load more reviews"}</button></div>` : ""}
+      </div>`;
+  }
+
+  let allReviewsRequest = 0;
+
+  // Changing a filter keeps the current list on screen (dimmed) until the new one arrives
+  async function loadAllReviews(reset) {
+    const a = allReviews;
+    const id = ++allReviewsRequest;
+    a.loading = true;
+    refreshPage();
+    try {
+      const q = new URLSearchParams({ sort: a.sort, scope: a.scope, limit: "10", offset: String(reset ? 0 : a.items.length) });
+      if (a.rating) q.set("rating", a.rating);
+      const res = await api(`/reviews?${q}`);
+      if (renderCurrent !== renderAllReviewsPage || id !== allReviewsRequest) return;
+      a.items = reset ? res.reviews : [...a.items, ...res.reviews];
+      a.total = res.total;
+      a.hasMore = res.hasMore;
+    } catch (err) {
+      toast(err.message);
+    }
+    a.loading = false;
+    refreshPage();
+  }
+
+  /* =======================================================
      Add a perfume  (#add-perfume)
      ======================================================= */
-  const MAX_PHOTO = 5 * 1024 * 1024;
-  const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
-  let addPhoto = null;   // File chosen in the form
+  const MAX_PHOTO = 5 * 1024 * 1024;   // server limit
+  const PHOTO_MAX_SIDE = 1600;          // photos are resized to this before upload
+  let addPhoto = null;                  // ready-to-upload JPEG
+  let photoWork = null;                 // promise while a photo is being prepared
 
   function renderAddPage() {
     return `
@@ -1270,13 +1392,13 @@
               </label>
 
               <div class="field">
-                <span class="field__label">Photo <span class="field__optional">(optional · JPG, PNG or WebP, max 5 MB)</span></span>
+                <span class="field__label">Photo <span class="field__optional">(optional · any size, we'll resize it)</span></span>
                 <div class="add__photo">
                   <div class="add__preview" id="photoPreview">
                     ${perfumeMedia({ name: "", image: "", look: { shape: "rect", liquid: "#e3e6e4", cap: "#2b2f2d" } }, "sm")}
                   </div>
                   <label class="btn btn--ghost btn--sm add__file">
-                    <input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp" />
+                    <input type="file" id="photoInput" accept="image/*" />
                     Choose a photo
                   </label>
                   <button type="button" class="link link--btn" id="photoRemove" hidden>Remove</button>
@@ -1358,6 +1480,9 @@
     const fields = {};
     if (!body.brand) fields.brand = "Please enter the brand.";
     if (!body.name) fields.name = "Please enter the perfume's name.";
+    if (photoWork) await photoWork;   // wait until a chosen photo is ready
+    const photoError = $('[data-error-for="photo"]').textContent;
+    if (photoError) fields.photo = photoError;
     setFieldErrors(form, fields);
     error.textContent = "";
     if (Object.keys(fields).length) return;
@@ -1395,14 +1520,25 @@
     }
   }
 
-  function choosePhoto(file) {
-    const errorEl = $('[data-error-for="photo"]');
-    errorEl.textContent = "";
-    if (file && !PHOTO_TYPES.includes(file.type)) { errorEl.textContent = "Please choose a JPG, PNG or WebP image."; file = null; }
-    if (file && file.size > MAX_PHOTO) { errorEl.textContent = "That photo is larger than 5 MB."; file = null; }
-    addPhoto = file;
-    const preview = $("#photoPreview");
-    preview.innerHTML = perfumeMedia({
+  // Resize any photo (e.g. a big phone photo) to a web-friendly JPEG
+  async function preparePhoto(file) {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";                         // transparent PNGs get a white background
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+    if (!blob) throw new Error("encode failed");
+    return new File([blob], "photo.jpg", { type: "image/jpeg" });
+  }
+
+  function showPhoto(file) {
+    $("#photoPreview").innerHTML = perfumeMedia({
       name: "Preview", image: file ? URL.createObjectURL(file) : "",
       look: { shape: "rect", liquid: "#e3e6e4", cap: "#2b2f2d" },
     }, "sm");
@@ -1410,15 +1546,36 @@
     if (!file) $("#photoInput").value = "";
   }
 
+  function choosePhoto(file) {
+    const errorEl = $('[data-error-for="photo"]');
+    errorEl.textContent = "";
+    addPhoto = null;
+    if (!file) { photoWork = null; showPhoto(null); return; }
+
+    photoWork = preparePhoto(file)
+      .then((ready) => {
+        if (ready.size > MAX_PHOTO) throw new Error("too big");
+        addPhoto = ready;
+        showPhoto(ready);
+      })
+      .catch(() => {
+        errorEl.textContent = "We couldn't read that photo. Please choose a JPG, PNG or WebP image.";
+        showPhoto(null);
+      })
+      .finally(() => { photoWork = null; });
+  }
+
   /* =======================================================
      Accounts: session, sign up / log in window, account menu
      ======================================================= */
-  const session = { user: null, likes: new Set() };
+  const session = { user: null, likes: new Set(), following: new Set() };
   const isLiked = (id) => session.likes.has(id);
+  const isFollowing = (username) => session.following.has(username);
 
   function setSession(data) {
     session.user = data && data.user ? data.user : null;
     session.likes = new Set((data && data.likes) || []);
+    session.following = new Set((data && data.following) || []);
   }
 
   async function api(path, { method = "GET", body, file } = {}) {
@@ -1434,7 +1591,7 @@
     try {
       res = await fetch(`/api${path}`, opts);
     } catch (err) {
-      throw Object.assign(new Error("Can't reach the server. Please check your connection."), { status: 0, data: {} });
+      throw Object.assign(new Error("Can't connect to the LUMIERE server. Make sure it's running (npm start) and try again."), { status: 0, data: {} });
     }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw Object.assign(new Error(data.error || "Something went wrong."), { status: res.status, data });
@@ -1509,7 +1666,14 @@
   // Re-render everything that depends on who is signed in
   function onAuthChange() {
     applyAuthState();
-    if (perfumes.length) renderTrending();
+    allReviews.scope = "all";
+    if (perfumes.length) { renderTrending(); refreshCommunity(); }
+    loadGroups();
+    startMessenger();
+    if (renderCurrent === renderGroupPage && groupView) {
+      groupView.group = null;
+      loadGroup(groupView.slug);
+    }
     if (location.hash === "#add-perfume" && !session.user) location.hash = "";
     else if (renderCurrent) refreshPage();
     else if (!$("#perfumeView").hidden) route();
@@ -1613,14 +1777,76 @@
     setUI(liked);
     try {
       const res = await api(`/perfumes/${encodeURIComponent(p.id)}/like`, { method: liked ? "PUT" : "DELETE" });
-      p.real = res.stats;
+      p.real = { ...p.real, ...res.stats };
       if (liked) session.likes.add(p.id); else session.likes.delete(p.id);
+      $$(`[data-like-count="${p.id}"]`).forEach((el) => { el.textContent = formatCount(p.real.likes); });
+      $$(`.pv__actions [data-action="love"][data-id="${p.id}"] span`).forEach((el) => { el.textContent = liked ? "Liked" : "Like"; });
       toast(liked ? "Added to your liked perfumes" : "Removed from your liked perfumes");
     } catch (err) {
       setUI(!liked);
       toast(err.message);
     }
   }
+
+  function setFollowUI(username, on) {
+    $$(`[data-follow="${CSS.escape(username)}"]`).forEach((b) => {
+      b.setAttribute("aria-pressed", String(on));
+      b.textContent = on ? "Following" : "Follow";
+    });
+  }
+
+  async function toggleFollow(username) {
+    if (!session.user) {
+      openAuth("signup", "Join the community to follow other fragrance lovers and see what they're wearing.");
+      return;
+    }
+    const on = !isFollowing(username);
+    setFollowUI(username, on);
+    try {
+      const res = await api(`/users/${encodeURIComponent(username)}/follow`, { method: on ? "PUT" : "DELETE" });
+      if (on) session.following.add(username); else session.following.delete(username);
+      $$(`[data-followers-of="${CSS.escape(username)}"]`).forEach((el) => { el.textContent = formatCount(res.followers); });
+      if (profileData && profileData.user.username === username) {
+        profileData.followers = res.followers;
+        profileData.isFollowing = on;
+        if (renderCurrent === renderProfilePage) refreshPage();
+      }
+      toast(on ? `You're now following @${username}` : `You unfollowed @${username}`);
+      // the home feed switches to "people you follow" once you follow someone
+      if (on && session.following.size === 1) activityScope = "following";
+      if (activityScope === "following") loadActivity();
+    } catch (err) {
+      setFollowUI(username, !on);
+      toast(err.message);
+    }
+  }
+
+  // Update a review everywhere it's cached after a helpful vote
+  function patchReview(id, changes) {
+    const lists = [popularReviews, allReviews.items, profileData ? profileData.reviews : [], ...perfumes.map((p) => p.realReviews || [])];
+    lists.forEach((list) => list.forEach((r) => { if (String(r.id) === String(id)) Object.assign(r, changes); }));
+  }
+
+  async function toggleHelpful(btn) {
+    if (!session.user) {
+      openAuth("login", "Log in to mark reviews as helpful.");
+      return;
+    }
+    if (btn.disabled) return;
+    const id = btn.dataset.helpful;
+    const on = btn.getAttribute("aria-pressed") !== "true";
+    try {
+      const res = await api(`/reviews/${encodeURIComponent(id)}/like`, { method: on ? "PUT" : "DELETE" });
+      patchReview(id, { likes: res.likes, likedByMe: on });
+      $$(`[data-helpful="${CSS.escape(id)}"]`).forEach((b) => {
+        b.setAttribute("aria-pressed", String(on));
+        $("span", b).textContent = res.likes;
+      });
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
 
   function initAccounts() {
     // Lock icons for members-only nav links (shown only while signed out)
@@ -1730,6 +1956,7 @@
     if (!profileData || profileData.user.username !== username.toLowerCase()) {
       profileTab = "liked";
       editingProfile = false;
+      profileList = null;
     }
     renderCurrent = null;
     showView(`<div class="container pv"><p class="pv__empty">Loading profile…</p></div>`, `@${username}`);
@@ -1748,6 +1975,36 @@
           <p class="pv__empty">${err.status === 404 ? `We couldn't find @${escapeHTML(username)}.` : escapeHTML(err.message)}</p>
         </div>`;
     }
+  }
+
+  function showGroups() {
+    renderCurrent = renderGroupsPage;
+    showView(renderGroupsPage(), "Groups");
+    loadGroups();
+  }
+
+  function showGroup(slug) {
+    groupView = { slug, group: null, posts: [], total: 0, hasMore: false, sort: "new", loading: false, replies: {} };
+    renderCurrent = renderGroupPage;
+    showView(renderGroupPage(), "Group");
+    loadGroup(slug);
+  }
+
+  function showCreateGroup() {
+    if (!session.user) {
+      history.replaceState(null, "", location.pathname + location.search);
+      showHome();
+      openAuth("signup", "Create a free account to start your own group.");
+      return;
+    }
+    renderCurrent = null;   // keep what the user typed; don't re-render
+    showView(renderCreateGroupPage(), "Create a group");
+  }
+
+  function showAllReviews() {
+    renderCurrent = renderAllReviewsPage;
+    showView(renderAllReviewsPage(), "All reviews");
+    loadAllReviews(true);
   }
 
   function showAddPerfume() {
@@ -1773,6 +2030,12 @@
     }
     if ((m = hash.match(/^#profile\/(.+)$/))) return showProfile(decodeURIComponent(m[1]), token);
     if (hash === "#add-perfume") return showAddPerfume();
+    if (hash === "#all-reviews") return showAllReviews();
+    if (hash === "#groups") return showGroups();
+    if (hash === "#messages") return showMessenger();
+    if ((m = hash.match(/^#messages\/(.+)$/))) return showMessenger(decodeURIComponent(m[1]));
+    if (hash === "#create-group") return showCreateGroup();
+    if ((m = hash.match(/^#group\/(.+)$/))) return showGroup(decodeURIComponent(m[1]));
     showHome();
   }
 
@@ -1811,7 +2074,7 @@
     $("button[type=submit]", form).disabled = true;
     try {
       const res = await api(`/perfumes/${encodeURIComponent(p.id)}/review`, { method: "PUT", body: { rating, text } });
-      p.real = res.stats;
+      p.real = { ...p.real, ...res.stats };
       await loadRealReviews(p);
       editingReview = false;
       refreshPage();
@@ -1826,7 +2089,7 @@
   async function deleteReview(p) {
     try {
       const res = await api(`/perfumes/${encodeURIComponent(p.id)}/review`, { method: "DELETE" });
-      p.real = res.stats;
+      p.real = { ...p.real, ...res.stats };
       await loadRealReviews(p);
       editingReview = false;
       refreshPage();
@@ -1840,8 +2103,10 @@
   function initPages() {
     const view = $("#perfumeView");
 
-    // Open a perfume by clicking anywhere on its card (buttons keep their own actions)
+    // Open a perfume (or group) by clicking anywhere on its card (buttons keep their own actions)
     document.addEventListener("click", (e) => {
+      const groupCardEl = e.target.closest(".group-card[data-group]");
+      if (groupCardEl && !e.target.closest("button, a")) { location.hash = `group/${groupCardEl.dataset.group}`; return; }
       const card = e.target.closest(".perfume-card[data-perfume]");
       if (!card || e.target.closest("button, a")) return;
       openPerfume(card.dataset.perfume);
@@ -1857,7 +2122,34 @@
 
       // ----- Profile page -----
       const tab = e.target.closest("[data-profile-tab]");
-      if (tab) { profileTab = tab.dataset.profileTab; refreshPage(); return; }
+      if (tab) {
+        profileTab = tab.dataset.profileTab;
+        refreshPage();
+        if (profileTab === "followers" || profileTab === "following") loadProfileList(profileTab);
+        return;
+      }
+
+      // ----- Groups -----
+      const gFilter = e.target.closest("[data-groups-filter]");
+      if (gFilter) { groups.filter = gFilter.dataset.groupsFilter; refreshPage(); return; }
+      const pSort = e.target.closest("[data-posts-sort]");
+      if (pSort) { groupView.sort = pSort.dataset.postsSort; loadGroupPosts(true); return; }
+      if (e.target.closest("[data-posts-more]")) { loadGroupPosts(false); return; }
+      const repliesBtn = e.target.closest("[data-toggle-replies]");
+      if (repliesBtn) { toggleReplies(repliesBtn.dataset.toggleReplies); return; }
+      const postLike = e.target.closest("[data-post-like]");
+      if (postLike) { togglePostLike(postLike); return; }
+      const postDelete = e.target.closest("[data-post-delete]");
+      if (postDelete) { deletePost(postDelete.dataset.postDelete, postDelete.dataset.parent || null); return; }
+
+      // ----- All reviews page -----
+      const sortBtn = e.target.closest("[data-reviews-sort]");
+      if (sortBtn) { allReviews.sort = sortBtn.dataset.reviewsSort; loadAllReviews(true); return; }
+      const scopeBtn = e.target.closest("[data-reviews-scope]");
+      if (scopeBtn) { allReviews.scope = scopeBtn.dataset.reviewsScope; loadAllReviews(true); return; }
+      const ratingBtn = e.target.closest("[data-reviews-rating]");
+      if (ratingBtn) { allReviews.rating = ratingBtn.dataset.reviewsRating; loadAllReviews(true); return; }
+      if (e.target.closest("[data-load-more]")) { loadAllReviews(false); return; }
       if (e.target.closest("[data-edit-profile]")) { editingProfile = true; refreshPage(); $("#profileForm input").focus(); return; }
       if (e.target.closest("[data-cancel-profile]")) { editingProfile = false; refreshPage(); return; }
 
@@ -1920,6 +2212,11 @@
         $("#charCount").textContent = `${e.target.value.length} / 1000`;
         $("#composerError").textContent = "";
       }
+      if (e.target.matches("#createGroupForm [name=name]")) {
+        e.target.removeAttribute("aria-invalid");
+        checkGroupNameSoon(e.target.value);
+      }
+      if (e.target.matches("#postForm textarea, #postForm input")) $("#postError").textContent = "";
       if (e.target.matches("#addForm [name=brand], #addForm [name=name]")) {
         e.target.removeAttribute("aria-invalid");
         checkDuplicateSoon(e.target.form);
@@ -1935,6 +2232,9 @@
       const form = e.target;
       if (form.id === "reviewForm") return saveReview(currentPerfume(), form);
       if (form.id === "addForm") return submitAddForm(form);
+      if (form.id === "postForm") return submitPost(form);
+      if (form.id === "createGroupForm") return submitCreateGroup(form);
+      if (form.dataset.replyForm) return submitReply(form);
       if (form.id === "profileForm") {
         try {
           const res = await api("/users/me", { method: "PATCH", body: { displayName: form.displayName.value, bio: form.bio.value } });
@@ -1959,11 +2259,1054 @@
   }
 
   /* =======================================================
+     Groups: directory (#groups), group page (#group/<slug>),
+     create a group (#create-group)
+     ======================================================= */
+  const GROUP_TONES = {
+    woody: ["#f1ebe3", "#7a5a37"], floral: ["#f7e9ec", "#9a4a5c"], fresh: ["#e5f1ef", "#2f6f68"], amber: ["#f6ecdc", "#8a5a1c"],
+    citrus: ["#f7f1d9", "#7a6512"], musk: ["#eef0ef", "#4b5f66"], spicy: ["#f6e6df", "#93492c"], gourmand: ["#f1e7e1", "#6e4330"],
+  };
+  const groups = { list: null, filter: "all" };
+  let groupView = null;   // the open group page: { slug, group, posts, total, hasMore, sort, loading, replies: {} }
+
+  const groupTone = (g) => GROUP_TONES[g.family] || AVATAR_TONES[hash(g.slug) % AVATAR_TONES.length];
+
+  function groupIcon(g, size = "") {
+    const [bg, fg] = groupTone(g);
+    const letters = g.name.replace(/[^A-Za-z ]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+    return `<span class="group-icon ${size}" style="--g-bg:${bg};--g-fg:${fg}" aria-hidden="true">${escapeHTML(letters)}</span>`;
+  }
+
+  function joinButton(g, extra = "") {
+    return `<button class="btn btn--sm ${g.isMember ? "btn--ghost" : "btn--primary"} ${extra}" data-join="${escapeHTML(g.slug)}" aria-pressed="${!!g.isMember}">${g.isMember ? "Joined" : "Join"}</button>`;
+  }
+
+  function groupCard(g) {
+    return `
+      <article class="group-card" data-group="${escapeHTML(g.slug)}">
+        <div class="group-card__top">
+          ${groupIcon(g)}
+          ${joinButton(g)}
+        </div>
+        <h3 class="group-card__name"><a href="#group/${encodeURIComponent(g.slug)}">${escapeHTML(g.name)}</a></h3>
+        <p class="group-card__desc">${escapeHTML(g.description)}</p>
+        <p class="group-card__meta"><span data-members-of="${escapeHTML(g.slug)}">${formatCount(g.members)}</span> members · ${formatCount(g.postsThisWeek)} posts this week</p>
+      </article>`;
+  }
+
+  async function loadGroups() {
+    try {
+      const res = await api("/groups");
+      groups.list = res.groups;
+    } catch (err) {
+      groups.list = groups.list || [];
+    }
+    renderGroupsTeaser();
+    if (renderCurrent === renderGroupsPage) refreshPage();
+  }
+
+  function renderGroupsTeaser() {
+    const box = $("#groupsTeaser");
+    if (!box || !groups.list) return;
+    box.innerHTML = groups.list.slice(0, 4).map(groupCard).join("") || '<p class="pv__empty">No groups yet.</p>';
+  }
+
+  function renderGroupsPage() {
+    const list = !groups.list ? null : groups.filter === "mine" ? groups.list.filter((g) => g.isMember) : groups.list;
+    let body;
+    if (!list) body = '<p class="pv__empty">Loading groups…</p>';
+    else if (!list.length) body = `<p class="pv__empty">You haven't joined any groups yet. Pick a few from “All groups”.</p>`;
+    else body = `<div class="group-grid">${list.map(groupCard).join("")}</div>`;
+    return `
+      <div class="container pv">
+        <nav class="pv__crumbs" aria-label="Breadcrumb">
+          ${BACK_BUTTON}
+          <span>Community / <strong>Groups</strong></span>
+        </nav>
+        <div class="section-head">
+          <div>
+            <h1 class="section-title section-title--page">Discussion groups</h1>
+            <p class="section-sub">Join groups about the scents you love and talk with people who get it.</p>
+          </div>
+          ${session.user ? '<a class="btn btn--primary" href="#create-group">Create a group</a>' : '<button class="btn btn--primary" data-auth="signup" data-reason="Join the community to join groups and start discussions.">Join to take part</button>'}
+        </div>
+        ${session.user ? `
+          <div class="segmented groups-filter" role="tablist" aria-label="Which groups">
+            <button role="tab" aria-selected="${groups.filter === "all"}" data-groups-filter="all">All groups</button>
+            <button role="tab" aria-selected="${groups.filter === "mine"}" data-groups-filter="mine">My groups <span class="tab-count">${groups.list ? groups.list.filter((g) => g.isMember).length : 0}</span></button>
+          </div>` : ""}
+        ${body}
+      </div>`;
+  }
+
+  /* ---------- Group page ---------- */
+  function perfumeTag(slug) {
+    const p = byId(slug);
+    if (!p) return "";
+    const r = ratingFor(p);
+    return `
+      <a class="gpost__perfume" href="#perfume/${p.id}">
+        ${perfumeMedia(p, "xs")}
+        <span><strong>${escapeHTML(p.name)}</strong><span>${escapeHTML(p.brand)}${r.count ? ` · ★ ${r.avg.toFixed(1)}` : ""}</span></span>
+      </a>`;
+  }
+
+  function postLikeButton(post) {
+    const mine = session.user && post.user && post.user.username === session.user.username;
+    return `<button class="social-btn" data-post-like="${post.id}" aria-pressed="${!!post.likedByMe}" ${mine ? "disabled" : ""} aria-label="Like post">${ICON.heart}<span>${post.likes}</span></button>`;
+  }
+
+  function replyItem(reply) {
+    const mine = session.user && reply.user.username === session.user.username;
+    return `
+      <li class="greply">
+        <a href="#profile/${encodeURIComponent(reply.user.username)}" aria-hidden="true" tabindex="-1">${avatar(authorFromUser(reply.user), "avatar--sm")}</a>
+        <div class="greply__body">
+          <p class="greply__head">${profileLink(reply.user)} <span>${timeAgo(reply.createdAt)}</span></p>
+          <p class="greply__text">${escapeHTML(reply.text)}</p>
+          <div class="greply__actions">
+            ${postLikeButton(reply)}
+            ${mine ? `<button class="social-btn" data-post-delete="${reply.id}" data-parent="${reply.parent}">Delete</button>` : ""}
+          </div>
+        </div>
+      </li>`;
+  }
+
+  function postItem(post) {
+    const g = groupView.group;
+    const mine = session.user && post.user.username === session.user.username;
+    const replies = groupView.replies[post.id];
+    let thread = "";
+    if (replies) {
+      thread = `
+        <div class="gpost__thread">
+          ${replies === "loading" ? '<p class="pv__hint">Loading replies…</p>' : `<ul class="greply-list">${replies.map(replyItem).join("")}</ul>`}
+          ${g.isMember
+            ? `<form class="greply-form" data-reply-form="${post.id}" novalidate>
+                 <input name="text" maxlength="2000" placeholder="Write a reply…" aria-label="Write a reply" autocomplete="off" />
+                 <button class="btn btn--primary btn--sm" type="submit">Reply</button>
+               </form>`
+            : `<p class="pv__hint">${session.user ? `<button class="link link--btn" data-join="${escapeHTML(g.slug)}">Join ${escapeHTML(g.name)}</button> to reply.` : '<button class="link link--btn" data-auth="login">Log in</button> and join the group to reply.'}</p>`}
+        </div>`;
+    }
+    return `
+      <article class="gpost" data-post="${post.id}">
+        <header class="review__head">
+          <a href="#profile/${encodeURIComponent(post.user.username)}" aria-hidden="true" tabindex="-1">${avatar(authorFromUser(post.user))}</a>
+          <div>
+            <p class="review__user">${profileLink(post.user)}</p>
+            <p class="review__meta">@${escapeHTML(post.user.username)} · ${timeAgo(post.createdAt)}</p>
+          </div>
+        </header>
+        <p class="gpost__text">${escapeHTML(post.text)}</p>
+        ${post.perfume ? perfumeTag(post.perfume) : ""}
+        <footer class="review__actions">
+          ${postLikeButton(post)}
+          <button class="social-btn" data-toggle-replies="${post.id}" aria-expanded="${!!replies}">
+            ${ICON.comment}<span>${post.replies}</span> <span class="social-btn__label">${post.replies === 1 ? "reply" : "replies"}</span>
+          </button>
+          ${mine ? `<button class="social-btn" data-post-delete="${post.id}">Delete</button>` : ""}
+        </footer>
+        ${thread}
+      </article>`;
+  }
+
+  function renderGroupPage() {
+    const v = groupView;
+    if (!v.group) {
+      return `<div class="container pv"><nav class="pv__crumbs">${BACK_BUTTON}</nav><p class="pv__empty">${v.error ? escapeHTML(v.error) : "Loading group…"}</p></div>`;
+    }
+    const g = v.group;
+    const created = new Date(g.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    const familyName = g.family ? families.find((f) => f.key === g.family).name : "";
+
+    let writeArea;
+    if (!session.user) writeArea = joinPrompt(`Join the community to take part in ${escapeHTML(g.name)}.`);
+    else if (!g.isMember) {
+      writeArea = `
+        <div class="join-prompt">
+          <p>Join ${escapeHTML(g.name)} to start discussions and reply to posts.</p>
+          ${joinButton(g)}
+        </div>`;
+    } else {
+      writeArea = `
+        <form class="composer" id="postForm" novalidate>
+          <p class="composer__title">Start a discussion</p>
+          <textarea name="text" rows="3" maxlength="2000" aria-label="Your post" placeholder="Ask a question or share something with ${escapeHTML(g.name)}…"></textarea>
+          <div class="composer__foot">
+            <input class="composer__perfume" name="perfume" list="perfumeOptions" placeholder="Tag a perfume (optional)" aria-label="Tag a perfume" autocomplete="off" />
+            <span class="composer__error" id="postError" role="alert"></span>
+            <button type="submit" class="btn btn--primary btn--sm">Post</button>
+          </div>
+          <datalist id="perfumeOptions">${perfumes.map((p) => `<option value="${escapeHTML(`${p.brand ? p.brand + " " : ""}${p.name}`)}"></option>`).join("")}</datalist>
+        </form>`;
+    }
+
+    let posts;
+    if (v.loading && !v.posts.length) posts = '<p class="pv__empty">Loading discussions…</p>';
+    else if (!v.posts.length) posts = '<p class="pv__empty">No discussions yet — start the first one!</p>';
+    else posts = `<div class="gpost-list${v.loading ? " is-loading" : ""}">${v.posts.map(postItem).join("")}</div>`;
+
+    return `
+      <div class="container pv">
+        <nav class="pv__crumbs" aria-label="Breadcrumb">
+          ${BACK_BUTTON}
+          <span><a class="link" href="#groups">Groups</a> / <strong>${escapeHTML(g.name)}</strong></span>
+        </nav>
+
+        <section class="group-head">
+          ${groupIcon(g, "group-icon--lg")}
+          <div class="group-head__info">
+            <h1 class="group-head__name">${escapeHTML(g.name)}</h1>
+            <p class="group-head__desc">${escapeHTML(g.description)}</p>
+            <p class="group-head__meta">
+              <strong data-members-of="${escapeHTML(g.slug)}">${formatCount(g.members)}</strong> members ·
+              <strong>${formatCount(g.posts)}</strong> discussions ·
+              <strong>${formatCount(g.postsThisWeek)}</strong> posts this week
+            </p>
+          </div>
+          <div class="group-head__actions">${joinButton(g, "btn--follow-lg")}</div>
+        </section>
+
+        <div class="pv__grid">
+          <div class="pv__main">
+            <section class="panel">
+              ${writeArea}
+              <div class="panel__head">
+                <h2 class="panel__title">Discussions</h2>
+                <div class="segmented" role="tablist" aria-label="Sort posts">
+                  <button role="tab" aria-selected="${v.sort === "new"}" data-posts-sort="new">Newest</button>
+                  <button role="tab" aria-selected="${v.sort === "top"}" data-posts-sort="top">Top</button>
+                </div>
+              </div>
+              ${posts}
+              ${v.hasMore ? `<div class="all-reviews__more"><button class="btn btn--ghost" data-posts-more ${v.loading ? "disabled" : ""}>${v.loading ? "Loading…" : "Load more"}</button></div>` : ""}
+            </section>
+          </div>
+
+          <aside class="pv__side">
+            <section class="panel">
+              <h2 class="panel__title">About</h2>
+              <p class="group-about">${escapeHTML(g.description)}</p>
+              <ul class="group-facts">
+                ${familyName ? `<li><span>Scent family</span><strong>${familyName}</strong></li>` : ""}
+                <li><span>Created</span><strong>${created}${g.createdBy ? ` by ${profileLink(g.createdBy, "@" + g.createdBy.username)}` : ""}</strong></li>
+                <li><span>Posts & replies</span><strong>${formatCount(g.messages)}</strong></li>
+              </ul>
+            </section>
+
+            ${g.topPerfumes && g.topPerfumes.length ? `
+            <section class="panel">
+              <h2 class="panel__title">Most discussed perfumes</h2>
+              <ul class="group-perfumes">
+                ${g.topPerfumes.filter((t) => byId(t.slug)).map((t) => {
+                  const p = byId(t.slug);
+                  return `<li><a href="#perfume/${p.id}">${perfumeMedia(p, "xs")}<span><strong>${escapeHTML(p.name)}</strong><span>${escapeHTML(p.brand)}</span></span></a><span class="group-perfumes__n">${t.mentions}</span></li>`;
+                }).join("")}
+              </ul>
+            </section>` : ""}
+
+            <section class="panel">
+              <h2 class="panel__title">New members</h2>
+              <ul class="reviewers">
+                ${(g.recentMembers || []).map((u) => `
+                  <li class="reviewer">
+                    <a href="#profile/${encodeURIComponent(u.username)}" aria-hidden="true" tabindex="-1">${avatar(authorFromUser(u), "avatar--sm")}</a>
+                    <div><p class="reviewer__name">${profileLink(u)}</p><p class="reviewer__meta">@${escapeHTML(u.username)}</p></div>
+                  </li>`).join("") || '<li class="activity__empty">No members yet.</li>'}
+              </ul>
+            </section>
+          </aside>
+        </div>
+      </div>`;
+  }
+
+  async function loadGroupPosts(reset) {
+    const v = groupView;
+    const slug = v.slug;
+    v.loading = true;
+    refreshPage();
+    try {
+      const q = new URLSearchParams({ sort: v.sort, limit: "10", offset: String(reset ? 0 : v.posts.length) });
+      const res = await api(`/groups/${encodeURIComponent(slug)}/posts?${q}`);
+      if (groupView !== v || renderCurrent !== renderGroupPage) return;
+      v.posts = reset ? res.posts : [...v.posts, ...res.posts];
+      v.total = res.total;
+      v.hasMore = res.hasMore;
+    } catch (err) {
+      toast(err.message);
+    }
+    v.loading = false;
+    refreshPage();
+  }
+
+  async function loadGroup(slug) {
+    const v = groupView;
+    try {
+      const res = await api(`/groups/${encodeURIComponent(slug)}`);
+      if (groupView !== v) return;
+      v.group = res.group;
+      document.title = `${res.group.name} — LUMIERE`;
+      refreshPage();
+      loadGroupPosts(true);
+    } catch (err) {
+      v.error = err.status === 404 ? "This group doesn't exist (anymore)." : err.message;
+      refreshPage();
+    }
+  }
+
+  async function toggleReplies(postId) {
+    const v = groupView;
+    if (v.replies[postId]) {
+      delete v.replies[postId];
+      refreshPage();
+      return;
+    }
+    v.replies[postId] = "loading";
+    refreshPage();
+    try {
+      const res = await api(`/groups/${encodeURIComponent(v.slug)}/posts/${postId}/replies`);
+      if (groupView === v && v.replies[postId]) { v.replies[postId] = res.replies; refreshPage(); }
+    } catch (err) {
+      delete v.replies[postId];
+      refreshPage();
+      toast(err.message);
+    }
+  }
+
+  // Update the open group, the directory and the homepage teaser after joining/leaving
+  function applyMembership(slug, isMember, members) {
+    (groups.list || []).forEach((g) => { if (g.slug === slug) Object.assign(g, { isMember, members }); });
+    if (groupView && groupView.group && groupView.group.slug === slug) Object.assign(groupView.group, { isMember, members });
+    if (profileData && session.user && profileData.user.username === session.user.username) {
+      const g = (groups.list || []).find((x) => x.slug === slug);
+      profileData.groups = isMember
+        ? [{ slug, name: g ? g.name : slug, family: g ? g.family : null }, ...profileData.groups.filter((x) => x.slug !== slug)]
+        : profileData.groups.filter((x) => x.slug !== slug);
+    }
+    renderGroupsTeaser();
+    refreshPage();
+  }
+
+  async function toggleMembership(slug) {
+    if (!session.user) {
+      openAuth("signup", "Join the community to join groups and take part in discussions.");
+      return;
+    }
+    const g = (groups.list || []).find((x) => x.slug === slug) || (groupView && groupView.group);
+    const join = !(g && g.isMember);
+    try {
+      const res = await api(`/groups/${encodeURIComponent(slug)}/membership`, { method: join ? "PUT" : "DELETE" });
+      applyMembership(slug, res.isMember, res.members);
+      toast(join ? `Welcome to ${g ? g.name : "the group"}!` : `You left ${g ? g.name : "the group"}`);
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  function perfumeFromLabel(label) {
+    const q = label.trim().toLowerCase();
+    if (!q) return null;
+    return perfumes.find((p) => `${p.brand ? p.brand + " " : ""}${p.name}`.toLowerCase() === q)
+      || perfumes.find((p) => p.name.toLowerCase() === q) || undefined;
+  }
+
+  async function submitPost(form) {
+    const v = groupView;
+    const text = form.text.value.trim();
+    const error = $("#postError");
+    const tagged = perfumeFromLabel(form.perfume.value);
+    if (text.length < 2) { error.textContent = "Please write something first."; form.text.focus(); return; }
+    if (tagged === undefined) { error.textContent = "Pick a perfume from the list, or leave it empty."; form.perfume.focus(); return; }
+    $("button[type=submit]", form).disabled = true;
+    try {
+      const res = await api(`/groups/${encodeURIComponent(v.slug)}/posts`, { method: "POST", body: { text, perfume: tagged ? tagged.id : null } });
+      v.sort = "new";
+      v.posts = [res.post, ...v.posts.filter((p) => p.id !== res.post.id)];
+      v.total += 1;
+      v.group.posts += 1;
+      v.group.postsThisWeek += 1;
+      refreshPage();
+      toast("Posted!");
+    } catch (err) {
+      error.textContent = err.message;
+      $("button[type=submit]", form).disabled = false;
+    }
+  }
+
+  async function submitReply(form) {
+    const v = groupView;
+    const postId = form.dataset.replyForm;
+    const text = form.text.value.trim();
+    if (text.length < 2) { form.text.focus(); return; }
+    $("button", form).disabled = true;
+    try {
+      const res = await api(`/groups/${encodeURIComponent(v.slug)}/posts`, { method: "POST", body: { text, parent: postId } });
+      const list = Array.isArray(v.replies[postId]) ? v.replies[postId] : [];
+      v.replies[postId] = [...list, res.post];
+      const post = v.posts.find((p) => String(p.id) === postId);
+      if (post) post.replies += 1;
+      refreshPage();
+      const input = $(`[data-reply-form="${postId}"] input`);
+      if (input) input.focus();
+    } catch (err) {
+      toast(err.message);
+      $("button", form).disabled = false;
+    }
+  }
+
+  async function deletePost(id, parent) {
+    const v = groupView;
+    try {
+      await api(`/group-posts/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (parent) {
+        v.replies[parent] = (v.replies[parent] || []).filter((r) => String(r.id) !== id);
+        const post = v.posts.find((p) => String(p.id) === parent);
+        if (post) post.replies -= 1;
+      } else {
+        v.posts = v.posts.filter((p) => String(p.id) !== id);
+        v.total -= 1;
+        v.group.posts -= 1;
+      }
+      refreshPage();
+      toast(parent ? "Reply deleted" : "Post deleted");
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  async function togglePostLike(btn) {
+    if (!session.user) { openAuth("login", "Log in to like posts."); return; }
+    if (btn.disabled) return;
+    const id = btn.dataset.postLike;
+    const on = btn.getAttribute("aria-pressed") !== "true";
+    try {
+      const res = await api(`/group-posts/${encodeURIComponent(id)}/like`, { method: on ? "PUT" : "DELETE" });
+      const all = [...groupView.posts, ...Object.values(groupView.replies).filter(Array.isArray).flat()];
+      all.forEach((p) => { if (String(p.id) === id) Object.assign(p, { likes: res.likes, likedByMe: on }); });
+      $$(`[data-post-like="${CSS.escape(id)}"]`).forEach((b) => {
+        b.setAttribute("aria-pressed", String(on));
+        $("span", b).textContent = res.likes;
+      });
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  /* ---------- Create a group ---------- */
+  function renderCreateGroupPage() {
+    return `
+      <div class="container pv">
+        <nav class="pv__crumbs" aria-label="Breadcrumb">
+          ${BACK_BUTTON}
+          <span><a class="link" href="#groups">Groups</a> / <strong>Create a group</strong></span>
+        </nav>
+        <div class="add">
+          <section class="panel add__form-panel">
+            <h1 class="add__title">Create a group</h1>
+            <p class="section-sub">Start a space for a style, a house or a question you care about. You'll join it automatically.</p>
+            <form id="createGroupForm" class="add__form" novalidate>
+              <label class="field">
+                <span class="field__label">Group name</span>
+                <input name="name" maxlength="60" placeholder="e.g. Vetiver Fans" autocomplete="off" required />
+                <span class="field__error" data-error-for="name"></span>
+              </label>
+              <div class="notice" id="groupDupNotice" role="status" hidden></div>
+              <label class="field">
+                <span class="field__label">What is it about?</span>
+                <textarea name="description" rows="3" maxlength="240" placeholder="Tell people what the group discusses" required></textarea>
+                <span class="field__error" data-error-for="description"></span>
+              </label>
+              <fieldset class="field">
+                <legend class="field__label">Scent family <span class="field__optional">(optional)</span></legend>
+                <div class="check-chips">
+                  <label class="check-chip"><input type="radio" name="family" value="" checked /><span>None</span></label>
+                  ${families.map((f) => `<label class="check-chip"><input type="radio" name="family" value="${f.key}" /><span>${f.name}</span></label>`).join("")}
+                </div>
+              </fieldset>
+              <div class="add__foot">
+                <span class="composer__error" id="createGroupError" role="alert"></span>
+                <button type="submit" class="btn btn--primary" id="createGroupSubmit">Create group</button>
+              </div>
+            </form>
+          </section>
+          <aside class="panel add__tips">
+            <h2 class="panel__title">Tips</h2>
+            <ul>
+              <li>Check the <a class="link" href="#groups">existing groups</a> first — we'll warn you if the name is taken.</li>
+              <li>Keep the name short and clear.</li>
+              <li>Kick things off with a first post once it's created.</li>
+            </ul>
+          </aside>
+        </div>
+      </div>`;
+  }
+
+  function showGroupDuplicate(existing) {
+    const box = $("#groupDupNotice");
+    if (!box) return;
+    box.hidden = !existing;
+    $("#createGroupSubmit").disabled = !!existing;
+    box.innerHTML = existing ? `
+      <div><strong>“${escapeHTML(existing.name)}” already exists.</strong><p>Join it instead, or pick a different name.</p></div>
+      <a class="btn btn--primary btn--sm" href="#group/${encodeURIComponent(existing.slug)}">View group →</a>` : "";
+  }
+
+  let groupDupTimer = 0;
+  function checkGroupNameSoon(name) {
+    clearTimeout(groupDupTimer);
+    groupDupTimer = setTimeout(async () => {
+      if (name.trim().length < 3) return showGroupDuplicate(null);
+      try {
+        const res = await api(`/groups/check?name=${encodeURIComponent(name)}`);
+        showGroupDuplicate(res.exists ? res.group : null);
+      } catch (err) { /* checked again on submit */ }
+    }, 300);
+  }
+
+  async function submitCreateGroup(form) {
+    const body = { name: form.name.value.trim(), description: form.description.value.trim(), family: form.family.value };
+    const fields = {};
+    if (body.name.length < 3) fields.name = "Please give the group a name (3+ characters).";
+    if (body.description.length < 10) fields.description = "Tell people what the group is about (10+ characters).";
+    setFieldErrors(form, fields);
+    if (Object.keys(fields).length) return;
+    $("#createGroupSubmit").disabled = true;
+    try {
+      const res = await api("/groups", { method: "POST", body });
+      groups.list = [res.group, ...(groups.list || [])];
+      renderGroupsTeaser();
+      location.hash = `group/${res.group.slug}`;
+      toast(`${res.group.name} was created — say hi to your first members!`);
+    } catch (err) {
+      if (err.status === 409 && err.data.existing) showGroupDuplicate(err.data.existing);
+      else {
+        setFieldErrors(form, err.data && err.data.fields);
+        $("#createGroupError").textContent = err.message;
+        $("#createGroupSubmit").disabled = false;
+      }
+    }
+  }
+
+  /* ---------- Group posts chart (D3, see group-chart.js) ---------- */
+  async function initGroupChart() {
+    const box = $("#groupChart");
+    if (!box) return;
+    if (!window.LumiereGroupChart || !window.d3) { box.innerHTML = '<p class="pv__empty">The chart couldn\'t load.</p>'; return; }
+    try {
+      window.LumiereGroupChart.mount(box, await api("/stats/group-posts"));
+    } catch (err) {
+      box.innerHTML = `<p class="pv__empty">${escapeHTML(err.message)}</p>`;
+    }
+  }
+
+  /* =======================================================
+     Messenger  (#messages · #messages/<username>)
+     History comes from the API; new messages, typing, read
+     receipts and online status arrive live over Socket.io.
+     ======================================================= */
+  const messenger = {
+    conversations: null,   // list (newest first)
+    active: null,          // open conversation
+    messages: [],          // messages of the open conversation (oldest first)
+    hasMore: false,
+    loading: false,
+    online: new Set(),     // usernames online right now
+    typingUntil: 0,
+    unread: 0,
+  };
+  let socket = null;
+  let typingTimer = 0;
+  let lastTypingSent = 0;
+
+  const isMessengerOpen = () => renderCurrent === renderMessengerPage;
+  const fmtTime = (iso) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+  function dayLabel(iso) {
+    const d = new Date(iso);
+    const today = new Date();
+    const yesterday = new Date(Date.now() - 86400000);
+    if (d.toDateString() === today.toDateString()) return "Today";
+    if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+    return d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+  }
+
+  function setUnread(count) {
+    messenger.unread = Math.max(0, count);
+    $$('[data-messages-link] .badge').forEach((b) => {
+      b.textContent = messenger.unread > 99 ? "99+" : String(messenger.unread);
+      b.hidden = !messenger.unread;
+    });
+    const base = document.title.replace(/^\(\d+\+?\) /, "");
+    document.title = messenger.unread ? `(${messenger.unread}) ${base}` : base;
+  }
+
+  /* ---------- Live connection ---------- */
+  function connectSocket() {
+    disconnectSocket();
+    if (!session.user || !window.io) return;
+    socket = window.io({ withCredentials: true });
+
+    socket.on("connect", () => {
+      queryPresence();
+      updateConnectionNote();
+    });
+    socket.on("disconnect", updateConnectionNote);
+    socket.on("connect_error", updateConnectionNote);
+
+    socket.on("message:new", ({ message, conversation, totalUnread, clientId }) => {
+      upsertConversation(conversation);
+      const mine = message.sender === session.user.username;
+      const viewing = isMessengerOpen() && messenger.active && String(messenger.active.id) === String(conversation.id);
+
+      if (viewing) {
+        // replace my optimistic copy, or add the new message
+        const i = messenger.messages.findIndex((m) => String(m.id) === String(message.id) || (clientId && m.clientId === clientId));
+        if (i >= 0) messenger.messages[i] = message;
+        else messenger.messages.push(message);
+        if (!mine) messenger.typingUntil = 0;
+        renderThreadBody(true);
+        renderThreadHeader();
+        if (!mine && document.visibilityState === "visible") markActiveRead();
+      } else if (!mine) {
+        showChatPopup(conversation, message);
+      }
+      if (typeof totalUnread === "number") setUnread(totalUnread);
+      renderConversationList();
+    });
+
+    socket.on("typing", ({ conversationId }) => {
+      if (!messenger.active || String(messenger.active.id) !== String(conversationId)) return;
+      messenger.typingUntil = Date.now() + 3500;
+      renderThreadHeader();
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(renderThreadHeader, 3600);
+    });
+
+    socket.on("conversation:read", ({ conversationId, at }) => {
+      if (!messenger.active || String(messenger.active.id) !== String(conversationId)) return;
+      messenger.messages.forEach((m) => { if (m.sender === session.user.username && !m.readAt) m.readAt = at; });
+      renderThreadBody(false);
+    });
+
+    socket.on("unread:changed", ({ count }) => setUnread(count));
+
+    socket.on("presence", ({ username, online }) => {
+      if (online) messenger.online.add(username); else messenger.online.delete(username);
+      renderConversationList();
+      renderThreadHeader();
+    });
+  }
+
+  function disconnectSocket() {
+    if (socket) socket.disconnect();
+    socket = null;
+  }
+
+  function queryPresence() {
+    if (!socket || !socket.connected) return;
+    const names = (messenger.conversations || []).map((c) => c.other.username);
+    if (messenger.active) names.push(messenger.active.other.username);
+    if (!names.length) return;
+    socket.emit("presence:query", [...new Set(names)], (online) => {
+      online.forEach((u) => messenger.online.add(u));
+      renderConversationList();
+      renderThreadHeader();
+    });
+  }
+
+  function upsertConversation(conv) {
+    if (!messenger.conversations) return;
+    messenger.conversations = [conv, ...messenger.conversations.filter((c) => String(c.id) !== String(conv.id))];
+    if (messenger.active && String(messenger.active.id) === String(conv.id)) {
+      messenger.active = { ...messenger.active, ...conv, unread: 0 };
+      messenger.conversations[0].unread = 0;
+    }
+  }
+
+  async function loadConversations() {
+    try {
+      const res = await api("/conversations");
+      messenger.conversations = res.conversations;
+      res.conversations.forEach((c) => { if (c.online) messenger.online.add(c.other.username); });
+      setUnread(res.unread);
+    } catch (err) {
+      messenger.conversations = messenger.conversations || [];
+    }
+    renderConversationList();
+    queryPresence();
+  }
+
+  function markActiveRead() {
+    if (!messenger.active || !socket) return;
+    socket.emit("conversation:read", { conversationId: messenger.active.id });
+    // update the badge right away (the server confirms with "unread:changed")
+    const c = (messenger.conversations || []).find((x) => String(x.id) === String(messenger.active.id));
+    const wasUnread = (c ? c.unread : messenger.active.unread) || 0;
+    if (wasUnread) setUnread(messenger.unread - wasUnread);
+    if (c) c.unread = 0;
+    messenger.active.unread = 0;
+    renderConversationList();
+  }
+
+  /* ---------- Rendering ---------- */
+  function conversationItem(c) {
+    const active = messenger.active && String(messenger.active.id) === String(c.id);
+    const online = messenger.online.has(c.other.username);
+    const last = c.lastMessage;
+    return `
+      <li>
+        <a class="conv${active ? " is-active" : ""}${c.unread ? " is-unread" : ""}" href="#messages/${encodeURIComponent(c.other.username)}">
+          <span class="conv__avatar">${avatar(authorFromUser(c.other))}${online ? '<span class="online-dot" aria-label="Online"></span>' : ""}</span>
+          <span class="conv__body">
+            <span class="conv__top"><strong>${escapeHTML(c.other.displayName)}</strong><span>${last ? timeAgo(last.at) : ""}</span></span>
+            <span class="conv__last">${last ? `${last.mine ? "You: " : ""}${escapeHTML(last.text)}` : "No messages yet"}</span>
+          </span>
+          ${c.unread ? `<span class="badge conv__badge">${c.unread}</span>` : ""}
+        </a>
+      </li>`;
+  }
+
+  function renderConversationList() {
+    const box = $("#convList");
+    if (!box) return;
+    const list = messenger.conversations;
+    if (!list) { box.innerHTML = '<li class="conv-empty">Loading…</li>'; return; }
+    box.innerHTML = list.length
+      ? list.map(conversationItem).join("")
+      : '<li class="conv-empty">No conversations yet. Search for a member above, or tap <strong>Message</strong> on someone\'s profile.</li>';
+  }
+
+  function threadStatus() {
+    const a = messenger.active;
+    if (!a) return "";
+    if (messenger.typingUntil > Date.now()) return '<span class="thread__typing">typing<span class="dots"><span>.</span><span>.</span><span>.</span></span></span>';
+    return messenger.online.has(a.other.username) ? '<span class="thread__online">Online</span>' : "Offline";
+  }
+
+  function renderThreadHeader() {
+    const el = $("#threadStatus");
+    if (el) el.innerHTML = threadStatus();
+    const dot = $("#threadAvatarDot");
+    if (dot && messenger.active) dot.hidden = !messenger.online.has(messenger.active.other.username);
+  }
+
+  function renderThreadBody(scrollToEnd) {
+    const box = $("#threadMessages");
+    if (!box || !messenger.active) return;
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+    const me = session.user.username;
+    const msgs = messenger.messages;
+    let lastDay = "";
+    const lastMine = [...msgs].reverse().find((m) => m.sender === me);
+
+    let html = messenger.hasMore
+      ? `<div class="thread__older"><button class="link link--btn" data-older ${messenger.loading ? "disabled" : ""}>${messenger.loading ? "Loading…" : "Load earlier messages"}</button></div>`
+      : "";
+    if (!msgs.length && !messenger.loading) {
+      html += `<p class="thread__start">This is the start of your conversation with <strong>${escapeHTML(messenger.active.other.displayName)}</strong>. Say hi 👋</p>`;
+    }
+    msgs.forEach((m, i) => {
+      const day = dayLabel(m.createdAt);
+      if (day !== lastDay) { html += `<p class="thread__day"><span>${day}</span></p>`; lastDay = day; }
+      const mine = m.sender === me;
+      const next = msgs[i + 1];
+      const grouped = next && next.sender === m.sender && new Date(next.createdAt) - new Date(m.createdAt) < 5 * 60 * 1000;
+      html += `
+        <div class="bubble-row${mine ? " bubble-row--mine" : ""}${grouped ? " is-grouped" : ""}">
+          <div class="bubble${m.pending ? " is-pending" : ""}${m.failed ? " is-failed" : ""}">
+            <p>${escapeHTML(m.text)}</p>
+            <span class="bubble__time">${fmtTime(m.createdAt)}</span>
+          </div>
+        </div>`;
+      if (m === lastMine) {
+        const status = m.failed ? '<span class="is-failed">Not sent</span>' : m.pending ? "Sending…" : m.readAt ? "Seen" : "Sent";
+        html += `<p class="bubble-status">${status}</p>`;
+      }
+    });
+    box.innerHTML = html;
+    if (scrollToEnd || atBottom) box.scrollTop = box.scrollHeight;
+  }
+
+  function renderMessengerPage() {
+    const a = messenger.active;
+    const thread = a ? `
+      <header class="thread__head">
+        <a class="thread__back" href="#messages" aria-label="Back to conversations">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </a>
+        <a class="thread__who" href="#profile/${encodeURIComponent(a.other.username)}">
+          <span class="conv__avatar">${avatar(authorFromUser(a.other))}<span class="online-dot" id="threadAvatarDot" ${messenger.online.has(a.other.username) ? "" : "hidden"}></span></span>
+          <span><strong>${escapeHTML(a.other.displayName)}</strong><span class="thread__status" id="threadStatus">${threadStatus()}</span></span>
+        </a>
+      </header>
+      <div class="thread__messages" id="threadMessages" aria-live="polite"></div>
+      <p class="thread__note" id="connectionNote" hidden></p>
+      <form class="thread__composer" id="chatForm" autocomplete="off">
+        <textarea name="text" rows="1" maxlength="2000" placeholder="Write a message…" aria-label="Write a message"></textarea>
+        <button class="btn btn--primary" type="submit" aria-label="Send">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l16-8-6 16-2-7z"/></svg>
+        </button>
+      </form>`
+      : `
+      <div class="thread__empty">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/></svg>
+        <p><strong>Your messages</strong></p>
+        <p>Pick a conversation, or search for a member to start chatting.</p>
+      </div>`;
+
+    return `
+      <div class="container pv messenger-page">
+        <div class="messenger${a ? " messenger--thread" : ""}">
+          <aside class="messenger__list">
+            <div class="messenger__head"><h1>Messages</h1></div>
+            <form class="messenger__search" data-member-search>
+              <input type="search" placeholder="Search members to message…" aria-label="Search members" autocomplete="off" />
+              <div class="search-suggest" hidden></div>
+            </form>
+            <ul class="conv-list" id="convList"></ul>
+          </aside>
+          <section class="messenger__thread">${thread}</section>
+        </div>
+      </div>`;
+  }
+
+  function mountMessenger() {
+    $("#perfumeView").innerHTML = renderMessengerPage();
+    renderConversationList();
+    if (messenger.active) {
+      renderThreadBody(true);
+      updateConnectionNote();
+    }
+  }
+
+  function updateConnectionNote() {
+    const note = $("#connectionNote");
+    if (!note) return;
+    const ok = socket && socket.connected;
+    note.hidden = ok;
+    note.textContent = ok ? "" : "Reconnecting to live chat…";
+  }
+
+  /* ---------- Opening a chat ---------- */
+  async function openChat(username) {
+    try {
+      const { conversation } = await api("/conversations", { method: "POST", body: { username } });
+      if (!isMessengerOpen()) return;
+      if (conversation.online) messenger.online.add(conversation.other.username);
+      messenger.active = conversation;
+      messenger.messages = [];
+      messenger.hasMore = false;
+      messenger.typingUntil = 0;
+      mountMessenger();
+      document.title = `${conversation.other.displayName} — Messages — LUMIERE`;
+      await loadMessages(false);
+      markActiveRead();
+      const input = $("#chatForm textarea");
+      if (input && window.matchMedia("(min-width: 681px)").matches) input.focus();
+    } catch (err) {
+      toast(err.message);
+      location.hash = "messages";
+    }
+  }
+
+  async function loadMessages(older) {
+    const a = messenger.active;
+    if (!a) return;
+    messenger.loading = true;
+    if (older) renderThreadBody(false);
+    try {
+      const q = older && messenger.messages.length ? `?before=${encodeURIComponent(messenger.messages[0].createdAt)}` : "";
+      const res = await api(`/conversations/${a.id}/messages${q}`);
+      if (messenger.active !== a) return;
+      const box = $("#threadMessages");
+      const prevHeight = box ? box.scrollHeight : 0;
+      messenger.messages = older ? [...res.messages, ...messenger.messages] : res.messages;
+      messenger.hasMore = res.hasMore;
+      messenger.loading = false;
+      renderThreadBody(!older);
+      if (older && box) box.scrollTop = box.scrollHeight - prevHeight;   // keep your place
+    } catch (err) {
+      messenger.loading = false;
+      toast(err.message);
+    }
+  }
+
+  function sendChat(form) {
+    const a = messenger.active;
+    const text = form.text.value.trim();
+    if (!a || !text) return;
+    if (!socket || !socket.connected) { toast("Not connected to live chat yet — try again in a moment."); return; }
+    const clientId = `c${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+    const temp = { id: clientId, clientId, sender: session.user.username, text, createdAt: new Date().toISOString(), pending: true };
+    messenger.messages.push(temp);
+    form.text.value = "";
+    autosize(form.text);
+    renderThreadBody(true);
+    socket.emit("message:send", { conversationId: a.id, text, clientId }, (ack) => {
+      const i = messenger.messages.findIndex((m) => m.clientId === clientId);
+      if (ack && ack.ok) {
+        if (i >= 0) messenger.messages[i] = ack.message;
+      } else {
+        if (i >= 0) messenger.messages[i] = { ...temp, pending: false, failed: true };
+        toast((ack && ack.error) || "Couldn't send the message.");
+      }
+      if (messenger.active === a) renderThreadBody(false);
+    });
+  }
+
+  function autosize(textarea) {
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(140, textarea.scrollHeight)}px`;
+  }
+
+  /* ---------- Popup when a message arrives elsewhere on the site ---------- */
+  function showChatPopup(conversation, message) {
+    const stack = $("#chatPopups");
+    if (!stack) return;
+    const other = conversation.other;
+    const el = document.createElement("a");
+    el.className = "chat-popup";
+    el.href = `#messages/${encodeURIComponent(other.username)}`;
+    el.setAttribute("role", "status");
+    el.innerHTML = `
+      ${avatar(authorFromUser(other))}
+      <span class="chat-popup__body">
+        <strong>${escapeHTML(other.displayName)}</strong>
+        <span>${escapeHTML(message.text.length > 90 ? message.text.slice(0, 89) + "…" : message.text)}</span>
+      </span>
+      <button class="chat-popup__close" aria-label="Dismiss">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>`;
+    stack.prepend(el);
+    while (stack.children.length > 3) stack.lastElementChild.remove();
+    const remove = () => { el.classList.add("is-leaving"); setTimeout(() => el.remove(), 250); };
+    el.addEventListener("click", (e) => { if (e.target.closest(".chat-popup__close")) { e.preventDefault(); } remove(); });
+    setTimeout(remove, 7000);
+  }
+
+  /* ---------- Member search inside the messenger ---------- */
+  let memberSearchTimer = 0;
+  function searchMembers(input) {
+    const box = $(".search-suggest", input.form);
+    const q = input.value.trim();
+    clearTimeout(memberSearchTimer);
+    if (q.length < 2) { box.hidden = true; return; }
+    memberSearchTimer = setTimeout(async () => {
+      try {
+        const res = await api(`/members?search=${encodeURIComponent(q)}&limit=6`);
+        if (input.value.trim() !== q) return;
+        const users = res.users.filter((u) => u.username !== session.user.username);
+        box.innerHTML = users.length
+          ? users.map((u) => `
+              <a class="suggest-item" href="#messages/${encodeURIComponent(u.username)}">
+                ${avatar(authorFromUser(u))}
+                <span><span class="suggest-item__name">${escapeHTML(u.displayName)}</span><br><span class="suggest-item__meta">@${escapeHTML(u.username)}</span></span>
+              </a>`).join("")
+          : `<p class="suggest-empty">No members found for “${escapeHTML(q)}”</p>`;
+        box.hidden = false;
+      } catch (err) { /* ignore */ }
+    }, 200);
+  }
+
+  /* ---------- Route ---------- */
+  function showMessenger(username) {
+    if (!session.user) {
+      history.replaceState(null, "", location.pathname + location.search);
+      showHome();
+      openAuth("login", "Log in to see your messages.");
+      return;
+    }
+    const wasOpen = isMessengerOpen();
+    renderCurrent = renderMessengerPage;
+    if (!username) {
+      messenger.active = null;
+      if (wasOpen) mountMessenger(); else showView(renderMessengerPage(), "Messages");
+      renderConversationList();
+    } else {
+      if (!wasOpen) { messenger.active = null; showView(renderMessengerPage(), "Messages"); renderConversationList(); }
+      openChat(username);
+    }
+    if (!messenger.conversations || !wasOpen) loadConversations();
+  }
+
+  // Connect live chat when signed in; clear everything on log out
+  function startMessenger() {
+    if (session.user) {
+      connectSocket();
+      loadConversations();
+    } else {
+      disconnectSocket();
+      messenger.conversations = null;
+      messenger.active = null;
+      messenger.online.clear();
+      setUnread(0);
+      if (isMessengerOpen()) location.hash = "";
+    }
+  }
+
+  function initMessenger() {
+    const view = $("#perfumeView");
+
+    view.addEventListener("submit", (e) => {
+      if (e.target.id === "chatForm") { e.preventDefault(); sendChat(e.target); }
+      if (e.target.matches("[data-member-search]")) e.preventDefault();
+    }, true);
+
+    view.addEventListener("keydown", (e) => {
+      if (e.target.matches("#chatForm textarea") && e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        sendChat(e.target.form);
+      }
+    });
+
+    view.addEventListener("input", (e) => {
+      if (e.target.matches("#chatForm textarea")) {
+        autosize(e.target);
+        if (socket && messenger.active && Date.now() - lastTypingSent > 2000) {
+          lastTypingSent = Date.now();
+          socket.emit("typing", { conversationId: messenger.active.id });
+        }
+      }
+      if (e.target.matches("[data-member-search] input")) searchMembers(e.target);
+    });
+
+    view.addEventListener("click", (e) => {
+      if (e.target.closest("[data-older]")) loadMessages(true);
+    });
+
+    // reading a chat when you come back to the tab marks it read
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && isMessengerOpen() && messenger.active) markActiveRead();
+    });
+  }
+
+  /* =======================================================
+     Review trends chart (D3, see trends-chart.js)
+     ======================================================= */
+  async function initTrendsChart() {
+    const box = $("#trendsChart");
+    if (!box) return;
+    if (!window.LumiereTrends || !window.d3) {
+      box.innerHTML = '<p class="pv__empty">The chart couldn\'t load.</p>';
+      return;
+    }
+    try {
+      const data = await api("/stats/review-trends");
+      const nameOf = (slug) => {
+        const p = byId(slug);
+        return p ? `${p.brand ? p.brand + " " : ""}${p.name}` : slug;
+      };
+      window.LumiereTrends.mount(box, data, { nameOf });
+    } catch (err) {
+      box.innerHTML = `<p class="pv__empty">${escapeHTML(err.message)}</p>`;
+    }
+  }
+
+  /* =======================================================
      Init
      ======================================================= */
   document.addEventListener("DOMContentLoaded", async () => {
-    $("#onlineAvatars").innerHTML = onlineUsers.map((u) => avatar(u)).join("");
-    $("#topReviewers").innerHTML = topReviewers.map(reviewerItem).join("");
     $("#year").textContent = new Date().getFullYear();
 
     // Broken photo -> show the illustrated bottle in the same frame
@@ -1975,10 +3318,11 @@
 
     initSearch();
     initSocial();
-    initActivity();
     initNav();
     initAccounts();
     initPages();
+    initCommunity();
+    initMessenger();
 
     // Who is signed in + the perfume list (catalog and member-added perfumes)
     const [me, list] = await Promise.allSettled([api("/auth/me"), api("/perfumes")]);
@@ -1990,8 +3334,12 @@
     }
 
     applyAuthState();
-    $("#reviewList").innerHTML = reviews.filter((r) => byId(r.perfume)).map(reviewCard).join("");
     initTrending();
+    refreshCommunity();
+    loadGroups();
+    startMessenger();
+    initTrendsChart();
+    initGroupChart();
 
     window.addEventListener("hashchange", route);
     route();

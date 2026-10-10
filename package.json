@@ -5,7 +5,9 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "seed:community": "node scripts/seed-community.js",
+    "seed:groups": "node scripts/seed-groups.js"
   },
   "keywords": [],
   "author": "",
@@ -13,8 +15,10 @@
   "type": "commonjs",
   "dependencies": {
     "bcryptjs": "3.0.3",
+    "d3": "7.9.0",
     "dotenv": "^18.0.6",
     "express": "^5.2.1",
-    "mongoose": "^9.11.1"
+    "mongoose": "^9.11.1",
+    "socket.io": "4.8.3"
   }
 }

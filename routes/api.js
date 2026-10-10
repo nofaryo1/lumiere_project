@@ -8,7 +8,15 @@ const User = require("../models/User");
 const Perfume = require("../models/Perfume");
 const Review = require("../models/Review");
 const Like = require("../models/Like");
-const catalog = require("../data/catalog");
+const Follow = require("../models/Follow");
+const Group = require("../models/Group");
+const GroupMember = require("../models/GroupMember");
+const GroupPost = require("../models/GroupPost");
+const { seedCatalog } = require("../lib/catalog");
+const { seedGroups } = require("../lib/groups");
+const chat = require("../lib/chat");
+const realtime = require("../lib/realtime");
+const Message = require("../models/Message");
 const { slugify, normalize, nameKey, perfumeKey } = require("../lib/perfumeKey");
 const {
   hashPassword, checkPassword, startSession, endSession,
@@ -61,48 +69,51 @@ async function findDuplicate(brand, name) {
 }
 
 async function meJSON(user) {
-  const [likes, reviews] = await Promise.all([
+  const [likes, reviews, following] = await Promise.all([
     Like.find({ user: user._id }).sort({ createdAt: -1 }),
     Review.find({ user: user._id }).sort({ updatedAt: -1 }),
+    Follow.find({ follower: user._id }).populate("following", "username"),
   ]);
   return {
     user: user.toPublic(),
     likes: likes.map((l) => l.perfume),
     reviews: reviews.map((r) => ({ perfume: r.perfume, rating: r.rating })),
+    following: following.filter((f) => f.following).map((f) => f.following.username),
   };
 }
 
-/* ---------- Catalog seeding ---------- */
-async function seedCatalog() {
-  const slugs = [];
-  const ops = catalog.map(([brand, name, tags, notes]) => {
-    const slug = slugify(`${brand} ${name}`);
-    slugs.push(slug);
-    return {
-      updateOne: {
-        filter: { slug },
-        update: {
-          $set: {
-            brand, name,
-            key: perfumeKey(brand, name),
-            nameKey: nameKey(brand, name),
-            tags: tags ? tags.split(" ") : [],
-            notes: notes ? notes.split(", ") : [],
-            image: `/images/perfumes/${slug}.jpg`,
-            source: "catalog",
-          },
-        },
-        upsert: true,
-      },
-    };
-  });
-  await Perfume.bulkWrite(ops);
-  await Perfume.deleteMany({ source: "catalog", slug: { $nin: slugs } });
-  console.log(`Perfume catalog ready (${slugs.length} perfumes)`);
+const authorJSON = (u) => (u ? { username: u.username, displayName: u.displayName } : null);
+
+// A review as the browser sees it. `me` = signed-in user (for likedByMe)
+function reviewJSON(r, me) {
+  return {
+    id: r._id,
+    user: authorJSON(r.user),
+    perfume: r.perfume,
+    rating: r.rating,
+    text: r.text,
+    likes: r.likesCount || 0,
+    likedByMe: !!(me && (r.likedBy || []).some((id) => id.equals(me._id))),
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  };
 }
 
-if (mongoose.connection.readyState === 1) seedCatalog().catch(console.error);
-else mongoose.connection.once("connected", () => seedCatalog().catch(console.error));
+const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const limitParam = (v, def, max) => Math.min(max, Math.max(1, parseInt(v, 10) || def));
+
+// Ids of the people `user` follows
+const followingIds = (user) => Follow.find({ follower: user._id }).distinct("following");
+
+/* ---------- Catalog seeding (lib/catalog.js) ---------- */
+async function seedCatalogOnStart() {
+  const count = await seedCatalog();
+  const groups = await seedGroups();
+  console.log(`Perfume catalog ready (${count} perfumes, ${groups} built-in groups)`);
+}
+
+if (mongoose.connection.readyState === 1) seedCatalogOnStart().catch(console.error);
+else mongoose.connection.once("connected", () => seedCatalogOnStart().catch(console.error));
 
 /* ---------- Auth ---------- */
 const authLimiter = rateLimit({ max: 20, windowMs: 15 * 60 * 1000 });
@@ -162,16 +173,24 @@ router.get("/auth/me", async (req, res) => {
 router.get("/users/:username", async (req, res) => {
   const user = await User.findOne({ username: String(req.params.username).toLowerCase() });
   if (!user) return res.status(404).json({ error: "User not found." });
-  const [likes, reviews, added] = await Promise.all([
+  const [likes, reviews, added, followers, following, isFollowing, memberships] = await Promise.all([
     Like.find({ user: user._id }).sort({ createdAt: -1 }),
-    Review.find({ user: user._id }).sort({ updatedAt: -1 }),
+    Review.find({ user: user._id }).sort({ updatedAt: -1 }).populate("user", "username displayName"),
     Perfume.find({ addedBy: user._id }).sort({ createdAt: -1 }),
+    Follow.countDocuments({ following: user._id }),
+    Follow.countDocuments({ follower: user._id }),
+    req.user ? Follow.exists({ follower: req.user._id, following: user._id }) : null,
+    GroupMember.find({ user: user._id }).sort({ createdAt: -1 }).populate("group", "slug name family"),
   ]);
   res.json({
     user: user.toPublic(),
     likes: likes.map((l) => l.perfume),
-    reviews: reviews.map((r) => ({ perfume: r.perfume, rating: r.rating, text: r.text, createdAt: r.createdAt, updatedAt: r.updatedAt })),
+    reviews: reviews.map((r) => reviewJSON(r, req.user)),
     added: added.map((p) => p.slug),
+    followers,
+    following,
+    isFollowing: !!isFollowing,
+    groups: memberships.filter((m) => m.group).map((m) => ({ slug: m.group.slug, name: m.group.name, family: m.group.family })),
   });
 });
 
@@ -185,15 +204,44 @@ router.patch("/users/me", requireUser, async (req, res) => {
 });
 
 /* ---------- Perfumes ---------- */
+// Counts activity per perfume overall and in recent windows (used for Trending)
+function activityGroup(extra = {}) {
+  const day = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const since = (days) => new Date(now - days * day);
+  const inRange = (from, to) => ({
+    $sum: { $cond: [{ $and: [{ $gte: ["$createdAt", since(from)] }, { $lt: ["$createdAt", since(to)] }] }, 1, 0] },
+  });
+  return {
+    $group: {
+      _id: "$perfume",
+      total: { $sum: 1 },
+      week: inRange(7, 0),
+      prevWeek: inRange(14, 7),
+      month: inRange(30, 0),
+      ...extra,
+    },
+  };
+}
+
 router.get("/perfumes", async (req, res) => {
   const [list, reviewStats, likeStats] = await Promise.all([
     Perfume.find().populate("addedBy", "username").sort({ createdAt: 1 }),
-    Review.aggregate([{ $group: { _id: "$perfume", reviews: { $sum: 1 }, ratingSum: { $sum: "$rating" } } }]),
-    Like.aggregate([{ $group: { _id: "$perfume", likes: { $sum: 1 } } }]),
+    Review.aggregate([activityGroup({ ratingSum: { $sum: "$rating" } })]),
+    Like.aggregate([activityGroup()]),
   ]);
   const stats = {};
-  reviewStats.forEach((s) => { stats[s._id] = { reviews: s.reviews, ratingSum: s.ratingSum, likes: 0 }; });
-  likeStats.forEach((s) => { stats[s._id] = { reviews: 0, ratingSum: 0, ...stats[s._id], likes: s.likes }; });
+  const blank = { reviews: 0, ratingSum: 0, likes: 0, week: 0, prevWeek: 0, month: 0 };
+  reviewStats.forEach((s) => {
+    stats[s._id] = { ...blank, reviews: s.total, ratingSum: s.ratingSum, week: s.week, prevWeek: s.prevWeek, month: s.month };
+  });
+  likeStats.forEach((s) => {
+    const t = stats[s._id] || (stats[s._id] = { ...blank });
+    t.likes = s.total;
+    t.week += s.week;
+    t.prevWeek += s.prevWeek;
+    t.month += s.month;
+  });
   res.json({ perfumes: list.map(perfumeJSON), stats });
 });
 
@@ -281,13 +329,15 @@ async function requirePerfume(req, res) {
 }
 
 router.get("/perfumes/:slug/reviews", async (req, res) => {
-  const list = await Review.find({ perfume: req.params.slug }).sort({ updatedAt: -1 }).limit(100).populate("user", "username displayName");
-  res.json({
-    reviews: list.filter((r) => r.user).map((r) => ({
-      user: { username: r.user.username, displayName: r.user.displayName },
-      rating: r.rating, text: r.text, createdAt: r.createdAt, updatedAt: r.updatedAt,
-    })),
-  });
+  const [list, mine] = await Promise.all([
+    Review.find({ perfume: req.params.slug }).sort({ likesCount: -1, createdAt: -1 }).limit(60).populate("user", "username displayName"),
+    req.user ? Review.findOne({ perfume: req.params.slug, user: req.user._id }).populate("user", "username displayName") : null,
+  ]);
+  const all = mine && !list.some((r) => r._id.equals(mine._id)) ? [mine, ...list] : list;
+  const counts = await Review.aggregate([{ $match: { perfume: req.params.slug } }, { $group: { _id: "$rating", n: { $sum: 1 } } }]);
+  const breakdown = [1, 2, 3, 4, 5].map((star) => (counts.find((c) => c._id === star) || { n: 0 }).n);   // index 0 = 1★
+  const total = breakdown.reduce((a, b) => a + b, 0);
+  res.json({ reviews: all.filter((r) => r.user).map((r) => reviewJSON(r, req.user)), total, breakdown });
 });
 
 router.put("/perfumes/:slug/review", requireUser, async (req, res) => {
@@ -322,6 +372,482 @@ router.put("/perfumes/:slug/like", requireUser, async (req, res) => {
 router.delete("/perfumes/:slug/like", requireUser, async (req, res) => {
   await Like.deleteOne({ user: req.user._id, perfume: req.params.slug });
   res.json({ liked: false, stats: await statsFor(req.params.slug) });
+});
+
+/* ---------- All reviews (homepage "Popular reviews" + "See all reviews") ---------- */
+router.get("/reviews", async (req, res) => {
+  const sort = req.query.sort === "newest" ? { createdAt: -1 } : { likesCount: -1, createdAt: -1 };
+  const limit = limitParam(req.query.limit, 10, 50);
+  const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+  const filter = {};
+  if (req.query.scope === "following") {
+    if (!req.user) return res.status(401).json({ error: "Please log in first." });
+    filter.user = { $in: await followingIds(req.user) };
+  }
+  if (req.query.rating && /^[1-5]$/.test(req.query.rating)) filter.rating = Number(req.query.rating);
+  const [list, total] = await Promise.all([
+    Review.find(filter).sort(sort).skip(offset).limit(limit).populate("user", "username displayName"),
+    Review.countDocuments(filter),
+  ]);
+  res.json({
+    reviews: list.filter((r) => r.user).map((r) => reviewJSON(r, req.user)),
+    total,
+    hasMore: offset + list.length < total,
+  });
+});
+
+// "Helpful" votes on a review
+async function setReviewLike(req, res, liked) {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Review not found." });
+  const review = await Review.findById(req.params.id);
+  if (!review) return res.status(404).json({ error: "Review not found." });
+  if (review.user.equals(req.user._id)) return res.status(400).json({ error: "You can't like your own review." });
+  const me = req.user._id;
+  const updated = liked
+    ? await Review.findOneAndUpdate({ _id: review._id, likedBy: { $ne: me } }, { $push: { likedBy: me }, $inc: { likesCount: 1 } }, { new: true, timestamps: false })
+    : await Review.findOneAndUpdate({ _id: review._id, likedBy: me }, { $pull: { likedBy: me }, $inc: { likesCount: -1 } }, { new: true, timestamps: false });
+  res.json({ liked, likes: (updated || (await Review.findById(review._id))).likesCount });
+}
+router.put("/reviews/:id/like", requireUser, (req, res) => setReviewLike(req, res, true));
+router.delete("/reviews/:id/like", requireUser, (req, res) => setReviewLike(req, res, false));
+
+/* ---------- Following ---------- */
+async function findUser(req, res) {
+  const user = await User.findOne({ username: String(req.params.username).toLowerCase() });
+  if (!user) res.status(404).json({ error: "User not found." });
+  return user;
+}
+
+router.put("/users/:username/follow", requireUser, async (req, res) => {
+  const target = await findUser(req, res);
+  if (!target) return;
+  if (target._id.equals(req.user._id)) return res.status(400).json({ error: "You can't follow yourself." });
+  await Follow.updateOne(
+    { follower: req.user._id, following: target._id },
+    { $setOnInsert: { follower: req.user._id, following: target._id } },
+    { upsert: true }
+  );
+  res.json({ following: true, followers: await Follow.countDocuments({ following: target._id }) });
+});
+
+router.delete("/users/:username/follow", requireUser, async (req, res) => {
+  const target = await findUser(req, res);
+  if (!target) return;
+  await Follow.deleteOne({ follower: req.user._id, following: target._id });
+  res.json({ following: false, followers: await Follow.countDocuments({ following: target._id }) });
+});
+
+// Followers / following lists on a profile
+async function followList(req, res, direction) {
+  const user = await findUser(req, res);
+  if (!user) return;
+  const limit = limitParam(req.query.limit, 60, 200);
+  const filter = direction === "followers" ? { following: user._id } : { follower: user._id };
+  const other = direction === "followers" ? "follower" : "following";
+  const [rows, total] = await Promise.all([
+    Follow.find(filter).sort({ createdAt: -1 }).limit(limit).populate(other, "username displayName bio"),
+    Follow.countDocuments(filter),
+  ]);
+  res.json({
+    users: rows.map((r) => r[other]).filter(Boolean).map((u) => ({ username: u.username, displayName: u.displayName, bio: u.bio })),
+    total,
+  });
+}
+router.get("/users/:username/followers", (req, res) => followList(req, res, "followers"));
+router.get("/users/:username/following", (req, res) => followList(req, res, "following"));
+
+/* ---------- Members: search + top reviewers ---------- */
+router.get("/members", async (req, res) => {
+  const q = text(req.query.search, 40);
+  if (!q) return res.json({ users: [] });
+  const re = new RegExp(escapeRegex(q), "i");
+  const users = await User.find({ $or: [{ username: re }, { displayName: re }] }).limit(limitParam(req.query.limit, 5, 20));
+  res.json({ users: users.map((u) => ({ username: u.username, displayName: u.displayName })) });
+});
+
+router.get("/members/top", async (req, res) => {
+  const limit = limitParam(req.query.limit, 5, 20);
+  const top = await Review.aggregate([
+    { $group: { _id: "$user", reviews: { $sum: 1 }, helpful: { $sum: "$likesCount" } } },
+    { $sort: { reviews: -1, helpful: -1 } },
+    { $limit: limit },
+    { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "user" } },
+    { $unwind: "$user" },
+    { $lookup: { from: "follows", localField: "_id", foreignField: "following", as: "followers" } },
+    { $project: { reviews: 1, helpful: 1, username: "$user.username", displayName: "$user.displayName", followers: { $size: "$followers" } } },
+  ]);
+  res.json({ users: top.map(({ _id, ...u }) => u) });
+});
+
+/* ---------- Activity feed ---------- */
+// scope=following: people you follow · scope=all: everyone
+router.get("/activity", async (req, res) => {
+  const limit = limitParam(req.query.limit, 12, 40);
+  let ids = null;
+  if (req.query.scope === "following") {
+    if (!req.user) return res.status(401).json({ error: "Please log in first." });
+    ids = await followingIds(req.user);
+    if (!ids.length) return res.json({ items: [], followingCount: 0 });
+  }
+  const by = (field) => (ids ? { [field]: { $in: ids } } : {});
+  const [reviews, likes, follows, added, joins, posts] = await Promise.all([
+    Review.find(by("user")).sort({ createdAt: -1 }).limit(limit).populate("user", "username displayName"),
+    Like.find(by("user")).sort({ createdAt: -1 }).limit(limit).populate("user", "username displayName"),
+    Follow.find(by("follower")).sort({ createdAt: -1 }).limit(limit).populate("follower following", "username displayName"),
+    Perfume.find({ source: "community", ...by("addedBy") }).sort({ createdAt: -1 }).limit(limit).populate("addedBy", "username displayName"),
+    GroupMember.find(by("user")).sort({ createdAt: -1 }).limit(limit).populate("user", "username displayName").populate("group", "slug name"),
+    GroupPost.find({ parent: null, ...by("user") }).sort({ createdAt: -1 }).limit(limit).populate("user", "username displayName").populate("group", "slug name"),
+  ]);
+  const items = [
+    ...reviews.filter((r) => r.user).map((r) => ({ type: "review", user: authorJSON(r.user), perfume: r.perfume, rating: r.rating, at: r.createdAt })),
+    ...likes.filter((l) => l.user).map((l) => ({ type: "like", user: authorJSON(l.user), perfume: l.perfume, at: l.createdAt })),
+    ...follows.filter((f) => f.follower && f.following).map((f) => ({ type: "follow", user: authorJSON(f.follower), target: authorJSON(f.following), at: f.createdAt })),
+    ...added.filter((p) => p.addedBy).map((p) => ({ type: "added", user: authorJSON(p.addedBy), perfume: p.slug, at: p.createdAt })),
+    ...joins.filter((j) => j.user && j.group).map((j) => ({ type: "joined", user: authorJSON(j.user), group: { slug: j.group.slug, name: j.group.name }, at: j.createdAt })),
+    ...posts.filter((g) => g.user && g.group).map((g) => ({ type: "posted", user: authorJSON(g.user), group: { slug: g.group.slug, name: g.group.name }, at: g.createdAt })),
+  ]
+    .sort((a, b) => b.at - a.at)
+    .slice(0, limit);
+  res.json({ items, followingCount: ids ? ids.length : undefined });
+});
+
+/* ---------- Groups ---------- */
+async function findGroup(req, res) {
+  const group = await Group.findOne({ slug: String(req.params.slug) });
+  if (!group) res.status(404).json({ error: "Group not found." });
+  return group;
+}
+
+const isMemberOf = (group, user) => (user ? GroupMember.exists({ group: group._id, user: user._id }) : null);
+
+// Members, posts and recent activity for every group (one round of aggregations)
+async function groupStats() {
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const [members, posts] = await Promise.all([
+    GroupMember.aggregate([{ $group: { _id: "$group", members: { $sum: 1 } } }]),
+    GroupPost.aggregate([{ $group: {
+      _id: "$group",
+      posts: { $sum: { $cond: [{ $eq: ["$parent", null] }, 1, 0] } },
+      messages: { $sum: 1 },
+      week: { $sum: { $cond: [{ $and: [{ $eq: ["$parent", null] }, { $gte: ["$createdAt", weekAgo] }] }, 1, 0] } },
+      last: { $max: "$createdAt" },
+    } }]),
+  ]);
+  const stats = {};
+  members.forEach((m) => { stats[m._id] = { members: m.members, posts: 0, messages: 0, week: 0, last: null }; });
+  posts.forEach((p) => { stats[p._id] = { members: 0, ...stats[p._id], posts: p.posts, messages: p.messages, week: p.week, last: p.last }; });
+  return stats;
+}
+
+function groupJSON(g, stat = {}, extra = {}) {
+  return {
+    slug: g.slug,
+    name: g.name,
+    description: g.description,
+    family: g.family,
+    source: g.source,
+    createdBy: g.createdBy && g.createdBy.username ? authorJSON(g.createdBy) : null,
+    createdAt: g.createdAt,
+    members: stat.members || 0,
+    posts: stat.posts || 0,
+    messages: stat.messages || 0,
+    postsThisWeek: stat.week || 0,
+    lastActivity: stat.last || null,
+    ...extra,
+  };
+}
+
+function postJSON(p, me) {
+  return {
+    id: p._id,
+    user: authorJSON(p.user),
+    text: p.text,
+    perfume: p.perfume,
+    parent: p.parent,
+    likes: p.likesCount || 0,
+    likedByMe: !!(me && (p.likedBy || []).some((id) => id.equals(me._id))),
+    replies: p.repliesCount || 0,
+    createdAt: p.createdAt,
+  };
+}
+
+router.get("/groups", async (req, res) => {
+  const [groups, stats, mine] = await Promise.all([
+    Group.find().populate("createdBy", "username displayName"),
+    groupStats(),
+    req.user ? GroupMember.find({ user: req.user._id }).distinct("group") : [],
+  ]);
+  const mineSet = new Set(mine.map(String));
+  const list = groups
+    .map((g) => groupJSON(g, stats[g._id], { isMember: mineSet.has(String(g._id)) }))
+    .sort((a, b) => b.postsThisWeek - a.postsThisWeek || b.members - a.members);
+  res.json({ groups: list });
+});
+
+// Live duplicate check for "Create a group"
+router.get("/groups/check", async (req, res) => {
+  const g = await Group.findOne({ nameKey: normalize(text(req.query.name, 60)) });
+  res.json({ exists: !!g, group: g ? { slug: g.slug, name: g.name } : null });
+});
+
+router.post("/groups", requireUser, async (req, res) => {
+  const name = text(req.body.name, 60);
+  const description = text(req.body.description, 240);
+  const family = FAMILIES.includes(req.body.family) ? req.body.family : null;
+  const fields = {};
+  if (name.length < 3) fields.name = "Please give the group a name (3+ characters).";
+  if (description.length < 10) fields.description = "Tell people what the group is about (10+ characters).";
+  if (Object.keys(fields).length) return res.status(400).json({ error: "Please fix the highlighted fields.", fields });
+
+  const existing = await Group.findOne({ nameKey: normalize(name) });
+  if (existing) {
+    return res.status(409).json({ error: "A group with this name already exists.", existing: { slug: existing.slug, name: existing.name } });
+  }
+  let slug = slugify(name) || "group";
+  for (let i = 2; await Group.exists({ slug }); i++) slug = `${slugify(name)}-${i}`;
+  const group = await Group.create({ slug, name, nameKey: normalize(name), description, family, source: "member", createdBy: req.user._id });
+  await GroupMember.create({ group: group._id, user: req.user._id });   // creators join automatically
+  await group.populate("createdBy", "username displayName");
+  res.status(201).json({ group: groupJSON(group, { members: 1 }, { isMember: true }) });
+});
+
+router.get("/groups/:slug", async (req, res) => {
+  const group = await findGroup(req, res);
+  if (!group) return;
+  await group.populate("createdBy", "username displayName");
+  const [stats, isMember, recent, topPerfumes] = await Promise.all([
+    groupStats(),
+    isMemberOf(group, req.user),
+    GroupMember.find({ group: group._id }).sort({ createdAt: -1 }).limit(8).populate("user", "username displayName"),
+    GroupPost.aggregate([
+      { $match: { group: group._id, perfume: { $ne: null } } },
+      { $group: { _id: "$perfume", n: { $sum: 1 } } },
+      { $sort: { n: -1 } },
+      { $limit: 5 },
+    ]),
+  ]);
+  res.json({
+    group: groupJSON(group, stats[group._id], {
+      isMember: !!isMember,
+      recentMembers: recent.filter((m) => m.user).map((m) => authorJSON(m.user)),
+      topPerfumes: topPerfumes.map((t) => ({ slug: t._id, mentions: t.n })),
+    }),
+  });
+});
+
+router.put("/groups/:slug/membership", requireUser, async (req, res) => {
+  const group = await findGroup(req, res);
+  if (!group) return;
+  await GroupMember.updateOne(
+    { group: group._id, user: req.user._id },
+    { $setOnInsert: { group: group._id, user: req.user._id } },
+    { upsert: true }
+  );
+  res.json({ isMember: true, members: await GroupMember.countDocuments({ group: group._id }) });
+});
+
+router.delete("/groups/:slug/membership", requireUser, async (req, res) => {
+  const group = await findGroup(req, res);
+  if (!group) return;
+  await GroupMember.deleteOne({ group: group._id, user: req.user._id });
+  res.json({ isMember: false, members: await GroupMember.countDocuments({ group: group._id }) });
+});
+
+router.get("/groups/:slug/members", async (req, res) => {
+  const group = await findGroup(req, res);
+  if (!group) return;
+  const [rows, total] = await Promise.all([
+    GroupMember.find({ group: group._id }).sort({ createdAt: -1 }).limit(limitParam(req.query.limit, 60, 200)).populate("user", "username displayName bio"),
+    GroupMember.countDocuments({ group: group._id }),
+  ]);
+  res.json({ users: rows.filter((r) => r.user).map((r) => ({ ...authorJSON(r.user), bio: r.user.bio })), total });
+});
+
+router.get("/groups/:slug/posts", async (req, res) => {
+  const group = await findGroup(req, res);
+  if (!group) return;
+  const limit = limitParam(req.query.limit, 10, 50);
+  const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+  const sort = req.query.sort === "top" ? { likesCount: -1, createdAt: -1 } : { createdAt: -1 };
+  const filter = { group: group._id, parent: null };
+  const [list, total] = await Promise.all([
+    GroupPost.find(filter).sort(sort).skip(offset).limit(limit).populate("user", "username displayName"),
+    GroupPost.countDocuments(filter),
+  ]);
+  res.json({ posts: list.filter((p) => p.user).map((p) => postJSON(p, req.user)), total, hasMore: offset + list.length < total });
+});
+
+router.get("/groups/:slug/posts/:id/replies", async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Post not found." });
+  const list = await GroupPost.find({ parent: req.params.id }).sort({ createdAt: 1 }).limit(100).populate("user", "username displayName");
+  res.json({ replies: list.filter((p) => p.user).map((p) => postJSON(p, req.user)) });
+});
+
+router.post("/groups/:slug/posts", requireUser, async (req, res) => {
+  const group = await findGroup(req, res);
+  if (!group) return;
+  if (!(await isMemberOf(group, req.user))) return res.status(403).json({ error: "Join the group to post." });
+  const body = text(req.body.text, 2000);
+  if (body.length < 2) return res.status(400).json({ error: "Please write something first." });
+  let parent = null;
+  if (req.body.parent) {
+    if (!mongoose.isValidObjectId(req.body.parent)) return res.status(400).json({ error: "Post not found." });
+    parent = await GroupPost.findOne({ _id: req.body.parent, group: group._id, parent: null });
+    if (!parent) return res.status(400).json({ error: "Post not found." });
+  }
+  const perfumeSlug = !parent && req.body.perfume ? String(req.body.perfume) : null;
+  if (perfumeSlug && !(await Perfume.exists({ slug: perfumeSlug }))) return res.status(400).json({ error: "Perfume not found." });
+
+  const post = await GroupPost.create({ group: group._id, user: req.user._id, text: body, perfume: perfumeSlug, parent: parent ? parent._id : null });
+  if (parent) await GroupPost.updateOne({ _id: parent._id }, { $inc: { repliesCount: 1 } }, { timestamps: false });
+  await post.populate("user", "username displayName");
+  res.status(201).json({ post: postJSON(post, req.user) });
+});
+
+router.delete("/group-posts/:id", requireUser, async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Post not found." });
+  const post = await GroupPost.findById(req.params.id);
+  if (!post) return res.status(404).json({ error: "Post not found." });
+  if (!post.user.equals(req.user._id)) return res.status(403).json({ error: "You can only delete your own posts." });
+  if (post.parent) await GroupPost.updateOne({ _id: post.parent }, { $inc: { repliesCount: -1 } }, { timestamps: false });
+  else await GroupPost.deleteMany({ parent: post._id });
+  await post.deleteOne();
+  res.json({ ok: true });
+});
+
+async function setPostLike(req, res, liked) {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Post not found." });
+  const me = req.user._id;
+  const updated = liked
+    ? await GroupPost.findOneAndUpdate({ _id: req.params.id, likedBy: { $ne: me } }, { $push: { likedBy: me }, $inc: { likesCount: 1 } }, { new: true, timestamps: false })
+    : await GroupPost.findOneAndUpdate({ _id: req.params.id, likedBy: me }, { $pull: { likedBy: me }, $inc: { likesCount: -1 } }, { new: true, timestamps: false });
+  const post = updated || (await GroupPost.findById(req.params.id));
+  if (!post) return res.status(404).json({ error: "Post not found." });
+  res.json({ liked, likes: post.likesCount });
+}
+router.put("/group-posts/:id/like", requireUser, (req, res) => setPostLike(req, res, true));
+router.delete("/group-posts/:id/like", requireUser, (req, res) => setPostLike(req, res, false));
+
+/* ---------- Group posts per month (homepage chart) ---------- */
+let groupTrendCache = { at: 0, data: null };
+
+router.get("/stats/group-posts", async (req, res) => {
+  if (groupTrendCache.data && Date.now() - groupTrendCache.at < 60 * 1000) return res.json(groupTrendCache.data);
+  const MONTHS = 12;
+  const now = new Date();
+  const months = Array.from({ length: MONTHS }, (_, i) => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (MONTHS - 1 - i), 1)));
+  const rows = await GroupPost.aggregate([
+    { $match: { parent: null, createdAt: { $gte: months[0] } } },
+    { $group: { _id: { g: "$group", m: { $dateTrunc: { date: "$createdAt", unit: "month", timezone: "UTC" } } }, n: { $sum: 1 } } },
+  ]);
+  const groups = await Group.find({}, "slug name family");
+  const byId = new Map(groups.map((g) => [String(g._id), g]));
+  const series = new Map();
+  for (const { _id, n } of rows) {
+    const g = byId.get(String(_id.g));
+    if (!g) continue;
+    const idx = (new Date(_id.m).getUTCFullYear() - months[0].getUTCFullYear()) * 12 + new Date(_id.m).getUTCMonth() - months[0].getUTCMonth();
+    if (idx < 0 || idx >= MONTHS) continue;
+    if (!series.has(g.slug)) series.set(g.slug, { slug: g.slug, name: g.name, values: new Array(MONTHS).fill(0) });
+    series.get(g.slug).values[idx] += n;
+  }
+  const list = [...series.values()].sort((a, b) => b.values.reduce((x, y) => x + y, 0) - a.values.reduce((x, y) => x + y, 0));
+  const totals = months.map((_, i) => list.reduce((sum, s) => sum + s.values[i], 0));
+  const data = { months, series: list, totals, totalPosts: totals.reduce((a, b) => a + b, 0) };
+  groupTrendCache = { at: Date.now(), data };
+  res.json(data);
+});
+
+/* ---------- Messenger (history over REST; live delivery over Socket.io, see lib/realtime.js) ---------- */
+router.get("/conversations", requireUser, async (req, res) => {
+  res.json({ conversations: await chat.listConversations(req.user, realtime.isOnline), unread: await chat.unreadCount(req.user) });
+});
+
+// Open (or start) a chat with someone
+router.post("/conversations", requireUser, async (req, res) => {
+  const other = await User.findOne({ username: String(req.body.username || "").toLowerCase() });
+  if (!other) return res.status(404).json({ error: "User not found." });
+  if (other._id.equals(req.user._id)) return res.status(400).json({ error: "You can't message yourself." });
+  const conversation = await chat.findOrCreateConversation(req.user, other);
+  await conversation.populate("participants", "username displayName");
+  res.json({ conversation: chat.conversationJSON(conversation, req.user, await chat.unreadIn(conversation, req.user), realtime.isOnline(other._id)) });
+});
+
+// Messages, newest last. `before` (ISO date) loads older ones.
+router.get("/conversations/:id/messages", requireUser, async (req, res) => {
+  const conversation = await chat.myConversation(req.user, req.params.id);
+  if (!conversation) return res.status(404).json({ error: "Conversation not found." });
+  const limit = limitParam(req.query.limit, 30, 100);
+  const filter = { conversation: conversation._id };
+  const before = req.query.before ? new Date(req.query.before) : null;
+  if (before && !isNaN(before)) filter.createdAt = { $lt: before };
+  const list = await Message.find(filter).sort({ createdAt: -1 }).limit(limit + 1).populate("sender", "username");
+  res.json({ messages: list.slice(0, limit).reverse().map((m) => chat.messageJSON(m)), hasMore: list.length > limit });
+});
+
+router.get("/messages/unread", requireUser, async (req, res) => {
+  res.json({ count: await chat.unreadCount(req.user) });
+});
+
+/* ---------- Review trends (homepage chart) ----------
+   Cumulative reviews per perfume, week by week, and which perfume
+   had the most reviews ("the leader") at the end of each week. */
+let trendCache = { at: 0, data: null };
+
+router.get("/stats/review-trends", async (req, res) => {
+  if (trendCache.data && Date.now() - trendCache.at < 60 * 1000) return res.json(trendCache.data);
+
+  const WEEKS = 52;
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  const now = new Date();
+  // Monday 00:00 UTC of the current week
+  const thisWeek = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 6) % 7)));
+  const weeks = Array.from({ length: WEEKS }, (_, i) => new Date(thisWeek.getTime() - (WEEKS - 1 - i) * weekMs));
+  const start = weeks[0];
+
+  const rows = await Review.aggregate([
+    { $group: {
+      _id: { p: "$perfume", w: { $dateTrunc: { date: "$createdAt", unit: "week", startOfWeek: "monday", timezone: "UTC" } } },
+      n: { $sum: 1 },
+    } },
+  ]);
+
+  // cumulative counts per perfume, per week
+  const cum = {};
+  for (const { _id, n } of rows) {
+    const series = cum[_id.p] || (cum[_id.p] = new Array(WEEKS).fill(0));
+    const idx = _id.w < start ? 0 : Math.round((_id.w - start) / weekMs);
+    if (idx < WEEKS) series[idx] += n;
+  }
+  for (const series of Object.values(cum)) for (let i = 1; i < WEEKS; i++) series[i] += series[i - 1];
+
+  const totals = new Array(WEEKS).fill(0);
+  for (const series of Object.values(cum)) series.forEach((v, i) => { totals[i] += v; });
+
+  // leader each week (ties keep the previous leader)
+  const leaders = [];
+  for (let i = 0; i < WEEKS; i++) {
+    let best = leaders[i - 1] || null;
+    for (const [slug, series] of Object.entries(cum)) {
+      if (!best || series[i] > cum[best][i]) best = slug;
+    }
+    leaders.push(best && cum[best][i] > 0 ? best : null);
+  }
+
+  // lines: everyone who ever led + the current top, max 5
+  const byFinal = Object.keys(cum).sort((a, b) => cum[b][WEEKS - 1] - cum[a][WEEKS - 1]);
+  const picked = [...new Set([...leaders.filter(Boolean), ...byFinal])].slice(0, 5)
+    .sort((a, b) => cum[b][WEEKS - 1] - cum[a][WEEKS - 1]);
+
+  const data = {
+    weeks,
+    totals,
+    totalReviews: await Review.countDocuments(),
+    leaders,
+    series: picked.map((slug) => ({ slug, values: cum[slug] })),
+  };
+  trendCache = { at: Date.now(), data };
+  res.json(data);
 });
 
 /* ---------- Fallbacks ---------- */

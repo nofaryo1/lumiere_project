@@ -31,9 +31,9 @@
       <nav class="nav" id="nav" aria-label="Main navigation">
         <a href="/" class="nav__link is-active" aria-current="page">Home</a>
         <a href="#trending" class="nav__link" data-members-only>Discover</a>
-        <a href="#activity" class="nav__link" data-members-only>Community</a>
+        <a href="#groups" class="nav__link" data-members-only>Community</a>
         <a href="#reviews" class="nav__link" data-members-only>Reviews</a>
-        <a href="#" class="nav__link" data-members-only data-soon>Messages <span class="badge">3</span></a>
+        <a href="#messages" class="nav__link" data-members-only data-messages-link>Messages <span class="badge" hidden>0</span></a>
         <div class="nav__auth-mobile" id="navAuthMobile">
           <!-- Rendered by main.js (log in / sign up, or your account links) -->
         </div>
@@ -140,9 +140,9 @@
           <div class="section-head">
             <div>
               <h2 class="section-title">Popular reviews</h2>
-              <p class="section-sub">The most helpful reviews this week</p>
+              <p class="section-sub">The reviews members found most helpful</p>
             </div>
-            <a href="#" class="link">See all reviews</a>
+            <a href="#all-reviews" class="link">See all reviews</a>
           </div>
           <div class="review-list" id="reviewList">
             <!-- Rendered by main.js -->
@@ -152,8 +152,12 @@
         <aside class="sidebar" id="activity">
           <div class="panel">
             <div class="panel__head">
-              <h2 class="panel__title">Community activity</h2>
+              <h2 class="panel__title" id="activityTitle">Community activity</h2>
               <span class="live-dot" aria-label="Live"></span>
+            </div>
+            <div class="segmented activity-tabs" id="activityTabs" role="tablist" aria-label="Whose activity" hidden>
+              <button role="tab" data-scope="following" aria-selected="false">Following</button>
+              <button role="tab" data-scope="all" aria-selected="true">Everyone</button>
             </div>
             <ul class="activity" id="activityFeed">
               <!-- Rendered by main.js -->
@@ -170,6 +174,53 @@
             </ul>
           </div>
         </aside>
+      </div>
+    </section>
+
+    <!-- ============ Discussion groups ============ -->
+    <section class="section" id="groups-home">
+      <div class="container">
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">Discussion groups</h2>
+            <p class="section-sub">Join a group about the scents you love and talk with people who get it</p>
+          </div>
+          <a href="#groups" class="link">Browse all groups</a>
+        </div>
+        <div class="group-grid group-grid--teaser" id="groupsTeaser">
+          <p class="pv__empty">Loading groups…</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Review trends (D3 chart) ============ -->
+    <section class="section section--alt" id="insights">
+      <div class="container">
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">Review trends</h2>
+            <p class="section-sub">Total reviews per perfume over the past year — the line on top is the most reviewed perfume at that moment</p>
+          </div>
+        </div>
+        <div class="panel trends-panel" id="trendsChart">
+          <p class="pv__empty">Loading chart…</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ Group posts per month (D3 chart) ============ -->
+    <section class="section" id="group-activity">
+      <div class="container">
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">Group activity</h2>
+            <p class="section-sub">Posts per month in the most active discussion groups over the past year</p>
+          </div>
+          <a href="#groups" class="link">Browse groups</a>
+        </div>
+        <div class="panel trends-panel" id="groupChart">
+          <p class="pv__empty">Loading chart…</p>
+        </div>
       </div>
     </section>
 
@@ -219,8 +270,15 @@
   <!-- Sign up / log in window (rendered by main.js) -->
   <div class="modal" id="authModal" hidden></div>
 
+  <!-- Live chat popups (new messages while you're elsewhere on the site) -->
+  <div class="chat-popups" id="chatPopups" aria-live="polite"></div>
+
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/vendor/d3/d3.min.js"></script>
+  <script src="/js/trends-chart.js"></script>
+  <script src="/js/group-chart.js"></script>
   <script src="/js/main.js"></script>
 </body>
 </html>

@@ -6,11 +6,15 @@ const reviewSchema = new mongoose.Schema(
     perfume: { type: String, required: true, index: true },   // perfume slug
     rating: { type: Number, required: true, min: 1, max: 5 },
     text: { type: String, required: true, trim: true },
+    likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],   // "helpful" votes
+    likesCount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
 // One review per person per perfume (editing replaces it)
 reviewSchema.index({ user: 1, perfume: 1 }, { unique: true });
+reviewSchema.index({ createdAt: -1 });
+reviewSchema.index({ likesCount: -1, createdAt: -1 });
 
 module.exports = mongoose.model("Review", reviewSchema);

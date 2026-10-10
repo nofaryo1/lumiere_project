@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema(
     displayName: { type: String, required: true, trim: true },
     passwordHash: { type: String, required: true },
     bio: { type: String, default: "", trim: true },
+    seeded: { type: Boolean, default: false },   // demo community member (scripts/seed-community.js)
   },
   { timestamps: true }
 );

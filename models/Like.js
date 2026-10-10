@@ -10,5 +10,6 @@ const likeSchema = new mongoose.Schema(
 );
 
 likeSchema.index({ user: 1, perfume: 1 }, { unique: true });
+likeSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model("Like", likeSchema);
