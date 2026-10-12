@@ -296,18 +296,6 @@
       </li>`;
   }
 
-  function reviewerItem(u) {
-    return `
-      <li class="reviewer">
-        <a href="#profile/${encodeURIComponent(u.username)}" aria-hidden="true" tabindex="-1">${avatar(authorFromUser(u))}</a>
-        <div>
-          <p class="reviewer__name">${profileLink(u)}</p>
-          <p class="reviewer__meta">${u.reviews} reviews · <span data-followers-of="${escapeHTML(u.username)}">${formatCount(u.followers)}</span> followers</p>
-        </div>
-        ${followButton(u.username)}
-      </li>`;
-  }
-
   /* =======================================================
      Trending: period tabs + family filter + search query
      ======================================================= */
@@ -596,12 +584,13 @@
     }
   }
 
+  // Avatars in the welcome box. (The "Top reviewers" panel itself is a
+  // React component: public/js/react/top-reviewers.js)
   async function loadTopReviewers() {
     try {
       const res = await api("/members/top?limit=5");
-      $("#topReviewers").innerHTML = res.users.slice(0, 4).map(reviewerItem).join("");
       $("#onlineAvatars").innerHTML = res.users.map((u) => avatar(authorFromUser(u))).join("");
-    } catch (err) { /* sidebar stays empty */ }
+    } catch (err) { /* stays empty */ }
   }
 
   function renderActivityTabs() {
@@ -1666,6 +1655,7 @@
   // Re-render everything that depends on who is signed in
   function onAuthChange() {
     applyAuthState();
+    document.dispatchEvent(new CustomEvent("lumiere:auth"));
     allReviews.scope = "all";
     if (perfumes.length) { renderTrending(); refreshCommunity(); }
     loadGroups();
@@ -1812,12 +1802,15 @@
         if (renderCurrent === renderProfilePage) refreshPage();
       }
       toast(on ? `You're now following @${username}` : `You unfollowed @${username}`);
+      document.dispatchEvent(new CustomEvent("lumiere:follow", { detail: { username, following: on, followers: res.followers } }));
       // the home feed switches to "people you follow" once you follow someone
       if (on && session.following.size === 1) activityScope = "following";
       if (activityScope === "following") loadActivity();
+      return { following: on, followers: res.followers };
     } catch (err) {
       setFollowUI(username, !on);
       toast(err.message);
+      return null;
     }
   }
 
@@ -3304,6 +3297,24 @@
   }
 
   /* =======================================================
+     Bridge for React components (public/js/react/*)
+     Events on document: "lumiere:ready", "lumiere:auth", "lumiere:follow"
+     ======================================================= */
+  let appReady = false;
+  window.Lumiere = {
+    api,
+    isReady: () => appReady,
+    getSession: () => ({ user: session.user, following: new Set(session.following) }),
+    toggleFollow,
+    formatCount,
+    avatarFor(user) {
+      const a = authorFromUser(user);
+      const [bg, fg] = AVATAR_TONES[a.tone % AVATAR_TONES.length];
+      return { initials: a.initials, bg, fg };
+    },
+  };
+
+  /* =======================================================
      Init
      ======================================================= */
   document.addEventListener("DOMContentLoaded", async () => {
@@ -3343,5 +3354,8 @@
 
     window.addEventListener("hashchange", route);
     route();
+
+    appReady = true;
+    document.dispatchEvent(new CustomEvent("lumiere:ready"));
   });
 })();

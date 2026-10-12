@@ -202,10 +202,12 @@
 
     draw();
     let lastWidth = root.clientWidth;
+    let frame = 0;
     new ResizeObserver(() => {
       if (Math.abs(root.clientWidth - lastWidth) < 8) return;
       lastWidth = root.clientWidth;
-      draw();
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(draw);   // redraw after layout settles
     }).observe(root);
   }
 

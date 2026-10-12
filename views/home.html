@@ -53,6 +53,11 @@
   <main>
 
     <!-- ============ Search hero ============ -->
+    <!-- ============ Video banner: React component (public/js/react/video-banner.js) ============ -->
+    <section class="video-section" aria-label="Welcome video">
+      <div class="container" id="videoBannerRoot"></div>
+    </section>
+
     <section class="hero" id="search">
       <div class="container hero__grid">
         <div class="hero__main">
@@ -164,15 +169,8 @@
             </ul>
           </div>
 
-          <div class="panel">
-            <div class="panel__head">
-              <h2 class="panel__title">Top reviewers</h2>
-              <a href="#" class="link link--sm">View all</a>
-            </div>
-            <ul class="reviewers" id="topReviewers">
-              <!-- Rendered by main.js -->
-            </ul>
-          </div>
+          <!-- "Top reviewers" panel: React component (public/js/react/top-reviewers.js) -->
+          <div id="topReviewersRoot"></div>
         </aside>
       </div>
     </section>
@@ -280,5 +278,9 @@
   <script src="/js/trends-chart.js"></script>
   <script src="/js/group-chart.js"></script>
   <script src="/js/main.js"></script>
+  <script src="/vendor/react/react.production.min.js"></script>
+  <script src="/vendor/react-dom/react-dom.production.min.js"></script>
+  <script src="/js/react/top-reviewers.js"></script>
+  <script src="/js/react/video-banner.js"></script>
 </body>
 </html>
