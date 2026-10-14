@@ -51,6 +51,7 @@
       image: rec.image || "",
       source: rec.source,
       addedBy: rec.addedBy || null,
+      notesAddedBy: rec.notesAddedBy || null,
       // activity = reviews + likes in that period (drives the Trending tabs)
       score: { week: s.week, month: s.month, all: s.reviews + s.likes },
       change: s.prevWeek >= 5 ? Math.round(((s.week - s.prevWeek) / s.prevWeek) * 100) : 0,
@@ -266,7 +267,6 @@
 
         <footer class="review__actions">
           ${helpfulButton(r)}
-          <button class="social-btn" data-action="comment">${ICON.comment}<span>Reply</span></button>
           <button class="social-btn" data-action="share" data-share="#perfume/${p.id}" aria-label="Share review">
             ${ICON.share}<span>Share</span>
           </button>
@@ -708,20 +708,10 @@
   const TIMES = ["Day", "Night"];
   const STAR_LABELS = ["Didn't like it", "Not for me", "It's OK", "Like it", "Love it"];
 
-  /* ---------- Your own votes (performance, when to wear, pros & cons) ----------
-     Saved in this browser (localStorage). Reviews and likes are saved to
-     your account on the server. */
-  const STORE_KEY = "lumiere:my-activity";
-  const emptyMine = () => ({ perf: {}, wear: [], agree: [] });
-  let store = {};
-  try { store = JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (err) { store = {}; }
-
-  const myData = (id) => ({ ...emptyMine(), ...store[id] });
-  function updateMine(id, change) {
-    store[id] = myData(id);
-    change(store[id]);
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch (err) { /* storage unavailable */ }
-  }
+  /* Performance, when-to-wear and agree votes are saved to each member's
+     account on the server (see loadPerformance). They used to live in this
+     browser's localStorage, shared by everyone using it — remove that. */
+  try { localStorage.removeItem("lumiere:my-activity"); } catch (err) { /* storage unavailable */ }
 
   // Deterministic pick of n items from a list, seeded by the perfume
   function pick(list, n, seed) {
@@ -813,6 +803,19 @@
       .map((x) => x.o);
   }
 
+  // Performance votes from members + the signed-in member's own vote (cached on the perfume)
+  const noPerfVote = () => ({ longevity: null, sillage: null, value: null });
+  async function loadPerformance(p) {
+    try {
+      p.perf = await api(`/perfumes/${encodeURIComponent(p.id)}/performance`);
+    } catch (err) {
+      p.perf = {
+        counts: { longevity: [0, 0, 0, 0, 0], sillage: [0, 0, 0, 0, 0], value: [0, 0, 0, 0, 0] }, voters: 0, mine: noPerfVote(),
+        wear: { counts: {}, mine: [] }, agree: { counts: {}, mine: [] },
+      };
+    }
+  }
+
   // Member reviews + star breakdown for a perfume (cached on the perfume)
   async function loadRealReviews(p) {
     try {
@@ -844,10 +847,12 @@
       </div>`;
   }
 
-  function perfMeter(key, label, base, mine) {
+  // `p.perf` = real votes from the API (includes the signed-in member's own vote)
+  function perfMeter(key, label, base, p) {
     const names = LEVELS[key];
-    const my = mine.perf[key];
-    const level = levelOf(base.perf[key].map((c, i) => c + (my === i + 1 ? 1 : 0)));
+    const real = p.perf ? p.perf.counts[key] : [0, 0, 0, 0, 0];
+    const my = p.perf && session.user ? p.perf.mine[key] : null;
+    const level = levelOf(base.perf[key].map((c, i) => c + real[i]));
     const result = level ? names[level - 1] : "No votes yet";
     return `
       <div class="meter">
@@ -859,28 +864,35 @@
       </div>`;
   }
 
-  function wearBlock(keys, base, mine) {
-    const counts = keys.map((k) => base.wear[k] + (mine.wear.includes(k) ? 1 : 0));
+  const myWear = (p) => (p.perf && session.user ? p.perf.wear.mine : []);
+  const myAgree = (p) => (p.perf && session.user ? p.perf.agree.mine : []);
+
+  function wearBlock(keys, base, p) {
+    const real = p.perf ? p.perf.wear.counts : {};
+    const mine = myWear(p);
+    const counts = keys.map((k) => base.wear[k] + (real[k] || 0));
     const total = sum(counts) || 1;
     return `
-      <div class="pv__bars">${bars(keys.map((k, i) => [k, counts[i], `${Math.round((counts[i] / total) * 100)}%`, mine.wear.includes(k)]))}</div>
-      ${voteChips("data-wear", keys.map((k) => [k, k]), (k) => mine.wear.includes(k), "Your picks")}`;
+      <div class="pv__bars">${bars(keys.map((k, i) => [k, counts[i], `${Math.round((counts[i] / total) * 100)}%`, mine.includes(k)]))}</div>
+      ${voteChips("data-wear", keys.map((k) => [k, k]), (k) => mine.includes(k), "Your picks")}`;
   }
 
-  function verdictList(kind, items, mine) {
+  function verdictList(kind, items, p) {
+    const real = p.perf ? p.perf.agree.counts : {};
+    const mine = myAgree(p);
     const icon = kind === "pros"
       ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l4 4 10-10"/></svg>'
       : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
     return items.map((it) => {
       const key = `${kind}:${it.text}`;
-      const agreed = mine.agree.includes(key);
+      const agreed = mine.includes(key);
       return `
         <li class="verdict__item">
           <span class="verdict__icon">${icon}</span>
           <span class="verdict__text">${escapeHTML(it.text)}</span>
           <button class="verdict__vote" data-agree="${escapeHTML(key)}" aria-pressed="${agreed}" aria-label="Agree: ${escapeHTML(it.text)}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11v9H4v-9zM7 11l4-8a2 2 0 0 1 2 2v4h5.5a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.3 20H7"/></svg>
-            <span>${it.votes + (agreed ? 1 : 0)}</span>
+            <span>${it.votes + (real[key] || 0)}</span>
           </button>
         </li>`;
     }).join("");
@@ -902,18 +914,17 @@
         <footer class="review__actions">
           ${mine
             ? `<span class="social-btn social-btn--static">${ICON.thumb}<span>${r.likes || 0}</span> <span class="social-btn__label">found it helpful</span></span>
-               <button class="social-btn" data-edit-review>Edit</button><button class="social-btn" data-delete-review>Delete</button>`
-            : `${helpfulButton(r)}
-               <button class="social-btn" data-action="comment">${ICON.comment}<span>Reply</span></button>`}
+               <button class="social-btn" data-edit-review="${r.id}">Edit</button><button class="social-btn" data-delete-review="${r.id}">Delete</button>`
+            : helpfulButton(r)}
         </footer>
       </article>`;
   }
 
-  function composer(p, draft) {
+  function composer(p, draft, again = false) {
     const rating = draft ? draft.rating : 0;
     return `
       <form class="composer" id="reviewForm" data-rating="${rating}" novalidate>
-        <p class="composer__title">${draft ? "Edit your review" : `Rate & review ${escapeHTML(p.name)}`}</p>
+        <p class="composer__title">${draft ? "Edit your review" : again ? `Write another review of ${escapeHTML(p.name)}` : `Rate & review ${escapeHTML(p.name)}`}</p>
         <div class="composer__rating">
           <div class="star-input" role="radiogroup" aria-label="Your rating">
             ${[5, 4, 3, 2, 1].map((n) => `
@@ -944,6 +955,246 @@
       </div>`;
   }
 
+  /* ---------- Notes canvas ----------
+     A <canvas> with one labeled circle per note. Notes come from the
+     perfume's data (API) — catalog and member-added perfumes alike —
+     and from the "Main notes" field in the Add a perfume form. */
+  const NOTE_FILLS = ["#e6efe9", "#e4ecf3", "#f3ece4", "#efe9f3", "#e9eef0", "#f1ebe3", "#f7e9ec", "#eef0ef"];
+  const NOTE_INKS = ["#3f6b56", "#3d6283", "#83613d", "#6a4f83", "#4b5f66", "#7a5a37", "#9a4a5c", "#4b5f66"];
+  const MAX_NOTES = 8;   // same limit as the API
+
+  // "Bergamot, vanilla ,, Musk" -> ["Bergamot", "vanilla", "Musk"]
+  const parseNotes = (value) => [...new Set(String(value || "").split(",").map((n) => n.trim()).filter(Boolean))].slice(0, MAX_NOTES);
+
+  function notesCanvasHTML(notes, emptyText = "No notes added yet.") {
+    if (!notes.length) return `<p class="pv__hint notes-canvas__empty">${emptyText}</p>`;
+    const label = `${notes.length} note${notes.length === 1 ? "" : "s"}: ${notes.join(", ")}`;
+    return `
+      <canvas class="notes-canvas${notes.length > 4 ? " notes-canvas--tall" : ""}" data-notes="${escapeHTML(JSON.stringify(notes))}"
+              role="img" aria-label="${escapeHTML(label)}">${escapeHTML(label)}</canvas>`;
+  }
+
+  // Split a note name into at most 2 lines that fit `maxWidth`
+  function fitLabel(ctx, text, maxWidth, maxSize) {
+    for (let size = maxSize; size >= 9; size--) {
+      ctx.font = `600 ${size}px ${getComputedStyle(document.body).fontFamily}`;
+      if (ctx.measureText(text).width <= maxWidth) return { size, lines: [text] };
+      const words = text.split(/\s+/);
+      if (words.length > 1) {
+        let best = null;
+        for (let i = 1; i < words.length; i++) {
+          const lines = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
+          const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
+          if (w <= maxWidth && (!best || w < best.w)) best = { lines, w };
+        }
+        if (best) return { size, lines: best.lines };
+      }
+    }
+    // still too long: shorten with an ellipsis
+    let t = text;
+    while (t.length > 3 && ctx.measureText(`${t}…`).width > maxWidth) t = t.slice(0, -1);
+    return { size: 9, lines: [`${t}…`] };
+  }
+
+  function drawNotesCanvas(canvas, progress = 1) {
+    let notes;
+    try { notes = JSON.parse(canvas.dataset.notes || "[]"); } catch (err) { notes = []; }
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    if (!width || !height) return;
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== Math.round(width * dpr)) canvas.width = Math.round(width * dpr);
+    if (canvas.height !== Math.round(height * dpr)) canvas.height = Math.round(height * dpr);
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const n = notes.length;
+    const rows = n > 4 ? 2 : 1;
+    const perRow = Math.ceil(n / rows);
+    const cellW = width / perRow;
+    const cellH = height / rows;
+    const radius = Math.max(18, Math.min(cellW, cellH) / 2 - 8);
+    const ease = 1 - Math.pow(1 - progress, 3);
+    const hover = canvas._hover || { scale: [] };
+    canvas._progress = progress;
+    const circles = [];
+
+    notes.forEach((note, i) => {
+      const row = Math.floor(i / perRow);
+      const inRow = row === rows - 1 ? n - perRow * (rows - 1) : perRow;   // center a shorter last row
+      const col = i - row * perRow;
+      const cx = (width - inRow * cellW) / 2 + cellW * (col + 0.5);
+      const cy = cellH * (row + 0.5);
+      const r = radius * (0.6 + 0.4 * ease);
+      const grow = hover.scale[i] || 1;            // hover: up to ~1.08
+      const lift = (grow - 1) * 40;                // …and floats up a few pixels
+      circles.push({ cx, cy, r: radius });
+
+      ctx.save();
+      ctx.translate(cx, cy - lift);
+      ctx.scale(grow, grow);
+      ctx.globalAlpha = ease;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = NOTE_FILLS[i % NOTE_FILLS.length];
+      ctx.fill();
+      ctx.lineWidth = 1.5 / grow;
+      ctx.strokeStyle = NOTE_INKS[i % NOTE_INKS.length];
+      ctx.globalAlpha = ease * (0.35 + (grow - 1) * 4);   // outline gets a little stronger on hover
+      ctx.stroke();
+
+      ctx.globalAlpha = ease;
+      const { size, lines } = fitLabel(ctx, note, r * 1.6, Math.min(15, Math.round(radius / 2.6)));
+      ctx.fillStyle = NOTE_INKS[i % NOTE_INKS.length];
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const lineH = size * 1.2;
+      lines.forEach((line, k) => ctx.fillText(line, 0, (k - (lines.length - 1) / 2) * lineH));
+      ctx.restore();
+    });
+    canvas._circles = circles;
+    ctx.globalAlpha = 1;
+  }
+
+  /* ---------- Hover: the circle under the pointer grows and lifts with a soft spring ---------- */
+  function hoverIndex(canvas, event) {
+    const rect = canvas.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    return (canvas._circles || []).findIndex((c) => Math.hypot(x - c.cx, y - c.cy) <= c.r);
+  }
+
+  function animateHover(canvas) {
+    const st = canvas._hover;
+    if (st.raf) return;
+    const tick = () => {
+      let moving = false;
+      st.scale = st.scale.map((s, i) => {
+        const target = i === st.index ? 1.08 : 1;
+        st.velocity[i] = (st.velocity[i] || 0) * 0.62 + (target - s) * 0.22;   // spring: a tiny bounce
+        const next = s + st.velocity[i];
+        const settled = Math.abs(target - next) < 0.0008 && Math.abs(st.velocity[i]) < 0.0008;
+        if (settled) { st.velocity[i] = 0; return target; }
+        moving = true;
+        return next;
+      });
+      if ((canvas._progress || 1) === 1) drawNotesCanvas(canvas);
+      st.raf = moving && canvas.isConnected ? requestAnimationFrame(tick) : 0;
+    };
+    st.raf = requestAnimationFrame(tick);
+  }
+
+  function enableNotesHover(canvas) {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    let count = 0;
+    try { count = JSON.parse(canvas.dataset.notes || "[]").length; } catch (err) { count = 0; }
+    canvas._hover = { index: -1, scale: new Array(count).fill(1), velocity: new Array(count).fill(0), raf: 0 };
+    canvas.addEventListener("pointermove", (e) => {
+      const i = hoverIndex(canvas, e);
+      if (i !== canvas._hover.index) { canvas._hover.index = i; animateHover(canvas); }
+    });
+    canvas.addEventListener("pointerleave", () => { canvas._hover.index = -1; animateHover(canvas); });
+  }
+
+  // Draw every notes canvas inside `scope`, with a short grow-in
+  const watchedCanvases = new WeakSet();
+  const canvasResizer = "ResizeObserver" in window
+    ? new ResizeObserver((entries) => entries.forEach((e) => drawNotesCanvas(e.target)))
+    : null;
+
+  const animatedNotes = new Set();   // animate each perfume's notes only the first time
+
+  function paintNotesCanvases(scope = document) {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    $$("canvas.notes-canvas", scope).forEach((canvas) => {
+      if (!watchedCanvases.has(canvas)) {
+        watchedCanvases.add(canvas);
+        if (canvasResizer) canvasResizer.observe(canvas);
+        enableNotesHover(canvas);
+      }
+      const key = `${location.hash}|${canvas.dataset.notes}`;
+      if (reduced || animatedNotes.has(key)) { drawNotesCanvas(canvas); return; }
+      animatedNotes.add(key);
+      const start = performance.now();
+      const step = (now) => {
+        const t = Math.min(1, (now - start) / 380);
+        drawNotesCanvas(canvas, t);
+        if (t < 1 && canvas.isConnected) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
+  /* ---------- Perfumes without notes: the first member can add them ---------- */
+  function notesPanelBody(p) {
+    if (p.notes.length) {
+      return `${notesCanvasHTML(p.notes)}${p.notesAddedBy
+        ? `<p class="pv__hint notes-credit">Notes added by ${profileLink({ username: p.notesAddedBy, displayName: "@" + p.notesAddedBy })}</p>` : ""}`;
+    }
+    if (!session.user) {
+      return `
+        <div class="notes-first">
+          <p class="notes-first__title">Be the first to add a note</p>
+          <p class="pv__hint">No one has added notes to ${escapeHTML(p.name)} yet.</p>
+          <button class="btn btn--primary btn--sm" data-auth="login" data-reason="Log in to add notes to ${escapeHTML(p.name)}.">Log in to add notes</button>
+        </div>`;
+    }
+    return `
+      <form class="notes-first" id="notesForm" data-slug="${escapeHTML(p.id)}" novalidate>
+        <p class="notes-first__title">Be the first to add a note</p>
+        <p class="pv__hint">What does ${escapeHTML(p.name)} smell like? Separate notes with commas.</p>
+        <input name="notes" maxlength="300" placeholder="e.g. Bergamot, Vanilla, Musk" autocomplete="off" aria-label="Notes" />
+        <div class="notes-first__preview" id="notesFormPreview"></div>
+        <div class="notes-first__foot">
+          <span class="composer__error" id="notesError" role="alert"></span>
+          <button type="submit" class="btn btn--primary btn--sm">Add notes</button>
+        </div>
+      </form>`;
+  }
+
+  // Show notes on a perfume everywhere it appears (page, cards)
+  function applyNotes(p, notes, addedBy) {
+    p.notes = notes;
+    p.notesAddedBy = addedBy || null;
+    $$(`.perfume-card[data-perfume="${p.id}"] .perfume-card__notes`).forEach((el) => {
+      el.innerHTML = notes.map((n) => `<span class="chip">${escapeHTML(n)}</span>`).join("");
+    });
+    const open = currentPerfume();
+    if (open && open.id === p.id) refreshPage();
+  }
+
+  async function submitNotes(form) {
+    const p = byId(form.dataset.slug);
+    const notes = parseNotes(form.notes.value);
+    const error = $("#notesError");
+    if (!p) return;
+    if (!notes.length) { error.textContent = "Please add at least one note."; form.notes.focus(); return; }
+    $("button[type=submit]", form).disabled = true;
+    try {
+      const res = await api(`/perfumes/${encodeURIComponent(p.id)}/notes`, { method: "PUT", body: { notes } });
+      applyNotes(p, res.notes, res.notesAddedBy);
+      toast(`Thanks! You added ${res.notes.length} note${res.notes.length === 1 ? "" : "s"} to ${p.name}`);
+    } catch (err) {
+      if (err.status === 409 && err.data.notes) {
+        applyNotes(p, err.data.notes, err.data.notesAddedBy);
+        toast("Someone just added notes to this perfume — here they are");
+      } else {
+        error.textContent = err.message;
+        $("button[type=submit]", form).disabled = false;
+      }
+    }
+  }
+
+  // Live preview in "Add a perfume" while the notes are typed
+  function updateNotesPreview(input, boxId = "notesPreview") {
+    const box = document.getElementById(boxId);
+    if (!box) return;
+    const notes = parseNotes(input.value);
+    box.innerHTML = notesCanvasHTML(notes, "Type notes above to preview them here.");
+    paintNotesCanvases(box);
+  }
+
   const BACK_BUTTON = `
     <button class="pv__back" data-back>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg> Back
@@ -952,27 +1203,28 @@
   /* =======================================================
      Perfume page  (#perfume/<slug>)
      ======================================================= */
-  let editingReview = false;
+  let editingReview = null;   // id of your review being edited (null = writing a new one)
 
   function renderPerfumePage(p) {
     const base = baseDetails(p);
-    const mine = myData(p.id);
     const r = ratingFor(p);
     const me = session.user;
     const real = p.realReviews || [];
-    const myReview = me ? real.find((rv) => rv.user.username === me.username) : null;
-    const others = real.filter((rv) => rv !== myReview);
+    const myReviews = me ? real.filter((rv) => rv.user.username === me.username) : [];
+    const myReview = myReviews[0] || null;   // your latest review
+    const editing = editingReview ? myReviews.find((rv) => String(rv.id) === String(editingReview)) : null;
+    const others = real.filter((rv) => !myReviews.includes(rv));
     const rankWeek = rankedPerfumes("week").findIndex((o) => o.id === p.id) + 1;
     const familyChips = p.tags.map((t) => `<span class="tag tag--static">${families.find((f) => f.key === t).name}</span>`).join("");
     const breakdown = p.breakdown || [0, 0, 0, 0, 0];
-    const perfVotes = sum(base.perf.longevity) + (Object.keys(mine.perf).length ? 1 : 0);
+    const perfVotes = sum(base.perf.longevity) + (p.perf ? p.perf.voters : 0);
 
     let writeArea = "";
     if (!me) writeArea = joinPrompt(`Tried ${escapeHTML(p.name)}? Join the community to rate it and share your review.`);
-    else if (!myReview || editingReview) writeArea = composer(p, editingReview && myReview);
+    else writeArea = composer(p, editing, myReviews.length > 0);   // always available: write another review, or edit one
 
     const reviewList = [
-      myReview && !editingReview ? reviewItem(myReview, { mine: true }) : "",
+      ...myReviews.filter((rv) => rv !== editing).map((rv) => reviewItem(rv, { mine: true })),
       ...others.map((rv) => reviewItem(rv)),
     ].join("");
     const moreNote = r.reviews > real.length && p.realReviews
@@ -1015,7 +1267,7 @@
             </dl>
 
             <div class="pv__actions">
-              <button class="btn btn--primary" data-write-review>${myReview ? "View your review" : "Write a review"}</button>
+              <button class="btn btn--primary" data-write-review>Write a review</button>
               <button class="action-btn" data-action="love" data-id="${p.id}" aria-pressed="${isLiked(p.id)}" aria-label="Like ${escapeHTML(p.name)}">${ICON.heart}<span>${isLiked(p.id) ? "Liked" : "Like"}</span></button>
               <button class="action-btn action-btn--icon" data-action="share" aria-label="Share">${ICON.share}</button>
             </div>
@@ -1032,11 +1284,11 @@
               <div class="verdict__cols">
                 <div class="verdict__col verdict__col--pros">
                   <h3>Pros</h3>
-                  <ul>${verdictList("pros", base.pros, mine)}</ul>
+                  <ul>${verdictList("pros", base.pros, p)}</ul>
                 </div>
                 <div class="verdict__col verdict__col--cons">
                   <h3>Cons</h3>
-                  <ul>${verdictList("cons", base.cons, mine)}</ul>
+                  <ul>${verdictList("cons", base.cons, p)}</ul>
                 </div>
               </div>
             </section>
@@ -1055,25 +1307,30 @@
           </div>
 
           <aside class="pv__side">
+            <section class="panel notes-panel">
+              <h2 class="panel__title">Notes at a glance</h2>
+              ${notesPanelBody(p)}
+            </section>
+
             <section class="panel">
               <h2 class="panel__title">Rating breakdown</h2>
               <div class="pv__bars">${bars([5, 4, 3, 2, 1].map((s) => [`${s}★`, breakdown[s - 1], formatCount(breakdown[s - 1]), myReview && myReview.rating === s]))}</div>
-              ${myReview ? `<p class="pv__hint pv__hint--after">Your rating: <strong>${myReview.rating}★</strong> — ${STAR_LABELS[myReview.rating - 1]}</p>` : ""}
+              ${myReview ? `<p class="pv__hint pv__hint--after">Your ${myReviews.length > 1 ? "latest " : ""}rating: <strong>${myReview.rating}★</strong> — ${STAR_LABELS[myReview.rating - 1]}</p>` : ""}
             </section>
 
             <section class="panel">
               <h2 class="panel__title">Performance</h2>
               <p class="pv__hint">${perfVotes ? `Based on ${perfVotes.toLocaleString("en-US")} votes · add yours below` : "No votes yet — add yours below"}</p>
-              ${perfMeter("longevity", "Longevity", base, mine)}
-              ${perfMeter("sillage", "Sillage", base, mine)}
-              ${perfMeter("value", "Value for money", base, mine)}
+              ${perfMeter("longevity", "Longevity", base, p)}
+              ${perfMeter("sillage", "Sillage", base, p)}
+              ${perfMeter("value", "Value for money", base, p)}
             </section>
 
             <section class="panel">
               <h2 class="panel__title">When to wear</h2>
               <p class="pv__hint">Pick every season and time that fits</p>
-              ${wearBlock(SEASONS, base, mine)}
-              <div class="pv__split">${wearBlock(TIMES, base, mine)}</div>
+              ${wearBlock(SEASONS, base, p)}
+              <div class="pv__split">${wearBlock(TIMES, base, p)}</div>
             </section>
           </aside>
         </div>
@@ -1379,6 +1636,9 @@
                 <span class="field__label">Main notes <span class="field__optional">(optional, separate with commas)</span></span>
                 <input name="notes" maxlength="300" placeholder="e.g. Bergamot, Vanilla, Musk" autocomplete="off" />
               </label>
+              <div class="notes-preview" id="notesPreview" aria-live="polite">
+                ${notesCanvasHTML([], "Type notes above to preview them here.")}
+              </div>
 
               <div class="field">
                 <span class="field__label">Photo <span class="field__optional">(optional · any size, we'll resize it)</span></span>
@@ -1655,6 +1915,9 @@
   // Re-render everything that depends on who is signed in
   function onAuthChange() {
     applyAuthState();
+    perfumes.forEach((x) => { delete x.perf; });   // performance votes are per member
+    const viewing = currentPerfume();
+    if (viewing) loadPerformance(viewing).then(() => { if (currentPerfume() === viewing) refreshPage(); });
     document.dispatchEvent(new CustomEvent("lumiere:auth"));
     allReviews.scope = "all";
     if (perfumes.length) { renderTrending(); refreshCommunity(); }
@@ -1920,6 +2183,7 @@
     $("main").hidden = true;
     document.title = `${title} — LUMIERE`;
     window.scrollTo({ top: 0, behavior: "instant" });
+    paintNotesCanvases(view);
   }
 
   function showHome() {
@@ -1937,12 +2201,13 @@
   }
 
   function showPerfume(p, token) {
-    editingReview = false;
+    editingReview = null;
     renderCurrent = () => renderPerfumePage(p);
     showView(renderCurrent(), `${p.brand ? p.brand + " " : ""}${p.name}`);
     if (pendingSection === "reviews") $("#pvReviews").scrollIntoView({ behavior: "instant" });
     pendingSection = null;
     if (!p.realReviews) loadRealReviews(p).then(() => { if (token === routeToken) refreshPage(); });
+    if (!p.perf) loadPerformance(p).then(() => { if (token === routeToken) refreshPage(); });
   }
 
   async function showProfile(username, token) {
@@ -2038,11 +2303,69 @@
     const y = window.scrollY;
     $("#perfumeView").innerHTML = renderCurrent();
     window.scrollTo({ top: y, behavior: "instant" });
+    paintNotesCanvases($("#perfumeView"));
   }
 
   // Keep card ratings in sync after you post or delete a review
   function refreshCardRatings(p) {
     $$(`.perfume-card[data-perfume="${p.id}"] .rating`).forEach((el) => { el.outerHTML = ratingRow(p); });
+  }
+
+  // Toggle a when-to-wear pick ("wear") or an agree vote on a pro/con ("agree")
+  async function toggleOpinion(p, kind, value) {
+    if (!session.user) {
+      openAuth("login", kind === "wear"
+        ? "Log in to say when you'd wear this perfume."
+        : "Log in to vote on the pros and cons you agree with.");
+      return;
+    }
+    if (!p.perf) await loadPerformance(p);
+    const box = p.perf[kind];
+    const on = !box.mine.includes(value);
+
+    // optimistic update, then confirm with the server's totals
+    const snapshot = JSON.parse(JSON.stringify(p.perf));
+    box.mine = on ? [...box.mine, value] : box.mine.filter((v) => v !== value);
+    box.counts[value] = Math.max(0, (box.counts[value] || 0) + (on ? 1 : -1));
+    refreshPage();
+    try {
+      const body = kind === "wear" ? { pick: value, on } : { key: value, on };
+      p.perf = await api(`/perfumes/${encodeURIComponent(p.id)}/${kind}`, { method: "PUT", body });
+      refreshPage();
+    } catch (err) {
+      p.perf = snapshot;
+      refreshPage();
+      toast(err.message);
+    }
+  }
+
+  // Click a level to vote; click your current level again to remove the vote
+  async function votePerformance(p, value) {
+    if (!session.user) {
+      openAuth("login", "Log in to rate this perfume's longevity, sillage and value.");
+      return;
+    }
+    if (!p.perf) await loadPerformance(p);
+    const [key, raw] = value.split(":");
+    const level = Number(raw);
+    const previous = p.perf.mine[key];
+    const next = previous === level ? null : level;
+
+    // optimistic update, then confirm with the server's totals
+    const snapshot = JSON.parse(JSON.stringify(p.perf));
+    if (previous) p.perf.counts[key][previous - 1] -= 1;
+    if (next) p.perf.counts[key][next - 1] += 1;
+    p.perf.mine[key] = next;
+    refreshPage();
+    try {
+      p.perf = await api(`/perfumes/${encodeURIComponent(p.id)}/performance`, { method: "PUT", body: { key, level: next } });
+      refreshPage();
+      toast(next ? "Thanks for voting!" : "Vote removed");
+    } catch (err) {
+      p.perf = snapshot;
+      refreshPage();
+      toast(err.message);
+    }
   }
 
   function setStarInput(form, rating) {
@@ -2066,12 +2389,15 @@
     const wasEditing = editingReview;
     $("button[type=submit]", form).disabled = true;
     try {
-      const res = await api(`/perfumes/${encodeURIComponent(p.id)}/review`, { method: "PUT", body: { rating, text } });
+      const res = wasEditing
+        ? await api(`/reviews/${encodeURIComponent(wasEditing)}`, { method: "PUT", body: { rating, text } })
+        : await api(`/perfumes/${encodeURIComponent(p.id)}/reviews`, { method: "POST", body: { rating, text } });
       p.real = { ...p.real, ...res.stats };
       await loadRealReviews(p);
-      editingReview = false;
+      editingReview = null;
       refreshPage();
       refreshCardRatings(p);
+      document.dispatchEvent(new CustomEvent("lumiere:reviews-changed"));
       toast(wasEditing ? "Your review was updated" : "Thanks! Your review was posted");
     } catch (err) {
       error.textContent = err.message;
@@ -2079,12 +2405,13 @@
     }
   }
 
-  async function deleteReview(p) {
+  async function deleteReview(p, id) {
     try {
-      const res = await api(`/perfumes/${encodeURIComponent(p.id)}/review`, { method: "DELETE" });
+      const res = await api(`/reviews/${encodeURIComponent(id)}`, { method: "DELETE" });
       p.real = { ...p.real, ...res.stats };
       await loadRealReviews(p);
-      editingReview = false;
+      editingReview = null;
+      document.dispatchEvent(new CustomEvent("lumiere:reviews-changed"));
       refreshPage();
       refreshCardRatings(p);
       toast("Your review was deleted");
@@ -2154,37 +2481,13 @@
       if (!p) return;
 
       const agree = e.target.closest("[data-agree]");
-      if (agree) {
-        const key = agree.dataset.agree;
-        updateMine(p.id, (m) => {
-          m.agree = m.agree.includes(key) ? m.agree.filter((k) => k !== key) : [...m.agree, key];
-        });
-        refreshPage();
-        return;
-      }
+      if (agree) { toggleOpinion(p, "agree", agree.dataset.agree); return; }
 
       const perf = e.target.closest("[data-perf]");
-      if (perf) {
-        const [key, level] = perf.dataset.perf.split(":");
-        let removed = false;
-        updateMine(p.id, (m) => {
-          removed = m.perf[key] === Number(level);
-          m.perf = { ...m.perf };
-          if (removed) delete m.perf[key];
-          else m.perf[key] = Number(level);
-        });
-        refreshPage();
-        toast(removed ? "Vote removed" : "Thanks for voting!");
-        return;
-      }
+      if (perf) { votePerformance(p, perf.dataset.perf); return; }
 
       const wear = e.target.closest("[data-wear]");
-      if (wear) {
-        const k = wear.dataset.wear;
-        updateMine(p.id, (m) => { m.wear = m.wear.includes(k) ? m.wear.filter((x) => x !== k) : [...m.wear, k]; });
-        refreshPage();
-        return;
-      }
+      if (wear) { toggleOpinion(p, "wear", wear.dataset.wear); return; }
 
       const star = e.target.closest("[data-star]");
       if (star) { setStarInput(star.closest("form"), Number(star.dataset.star)); return; }
@@ -2195,9 +2498,17 @@
         if (textarea) textarea.focus({ preventScroll: true });
         return;
       }
-      if (e.target.closest("[data-edit-review]")) { editingReview = true; refreshPage(); $("#reviewForm textarea").focus(); return; }
-      if (e.target.closest("[data-cancel-edit]")) { editingReview = false; refreshPage(); return; }
-      if (e.target.closest("[data-delete-review]")) { deleteReview(p); }
+      const editBtn = e.target.closest("[data-edit-review]");
+      if (editBtn) {
+        editingReview = editBtn.dataset.editReview;
+        refreshPage();
+        $("#pvReviews").scrollIntoView({ behavior: "smooth" });
+        $("#reviewForm textarea").focus({ preventScroll: true });
+        return;
+      }
+      if (e.target.closest("[data-cancel-edit]")) { editingReview = null; refreshPage(); return; }
+      const deleteBtn = e.target.closest("[data-delete-review]");
+      if (deleteBtn) { deleteReview(p, deleteBtn.dataset.deleteReview); }
     });
 
     view.addEventListener("input", (e) => {
@@ -2210,6 +2521,8 @@
         checkGroupNameSoon(e.target.value);
       }
       if (e.target.matches("#postForm textarea, #postForm input")) $("#postError").textContent = "";
+      if (e.target.matches("#addForm [name=notes]")) updateNotesPreview(e.target);
+      if (e.target.matches("#notesForm [name=notes]")) { updateNotesPreview(e.target, "notesFormPreview"); $("#notesError").textContent = ""; }
       if (e.target.matches("#addForm [name=brand], #addForm [name=name]")) {
         e.target.removeAttribute("aria-invalid");
         checkDuplicateSoon(e.target.form);
@@ -2225,6 +2538,7 @@
       const form = e.target;
       if (form.id === "reviewForm") return saveReview(currentPerfume(), form);
       if (form.id === "addForm") return submitAddForm(form);
+      if (form.id === "notesForm") return submitNotes(form);
       if (form.id === "postForm") return submitPost(form);
       if (form.id === "createGroupForm") return submitCreateGroup(form);
       if (form.dataset.replyForm) return submitReply(form);
@@ -2883,6 +3197,15 @@
     });
 
     socket.on("unread:changed", ({ count }) => setUnread(count));
+    socket.on("reviews:changed", () => document.dispatchEvent(new CustomEvent("lumiere:reviews-changed")));
+
+    socket.on("perfume:notes", ({ slug, notes, notesAddedBy }) => {
+      const p = byId(slug);
+      if (!p || JSON.stringify(p.notes) === JSON.stringify(notes)) return;
+      const typing = $("#notesForm") && $("#notesForm [name=notes]").value.trim();
+      applyNotes(p, notes, notesAddedBy);
+      if (typing) toast(`@${notesAddedBy} just added notes to ${p.name}`);
+    });
 
     socket.on("presence", ({ username, online }) => {
       if (online) messenger.online.add(username); else messenger.online.delete(username);

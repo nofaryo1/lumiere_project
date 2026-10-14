@@ -12,6 +12,7 @@ const perfumeSchema = new mongoose.Schema(
     image: { type: String, default: "" },
     source: { type: String, enum: ["catalog", "community"], default: "community" },
     addedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    notesAddedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },   // member who added the notes
   },
   { timestamps: true }
 );

@@ -17,6 +17,7 @@ const { seedGroups } = require("../lib/groups");
 const chat = require("../lib/chat");
 const realtime = require("../lib/realtime");
 const Message = require("../models/Message");
+const PerformanceVote = require("../models/PerformanceVote");
 const { slugify, normalize, nameKey, perfumeKey } = require("../lib/perfumeKey");
 const {
   hashPassword, checkPassword, startSession, endSession,
@@ -44,6 +45,7 @@ function perfumeJSON(p) {
     image: p.image,
     source: p.source,
     addedBy: p.addedBy && p.addedBy.username ? p.addedBy.username : null,
+    notesAddedBy: p.notesAddedBy && p.notesAddedBy.username ? p.notesAddedBy.username : null,
     createdAt: p.createdAt,
   };
 }
@@ -107,6 +109,7 @@ const followingIds = (user) => Follow.find({ follower: user._id }).distinct("fol
 
 /* ---------- Catalog seeding (lib/catalog.js) ---------- */
 async function seedCatalogOnStart() {
+  await Review.syncIndexes();   // drops the old "one review per perfume" unique index if it's still there
   const count = await seedCatalog();
   const groups = await seedGroups();
   console.log(`Perfume catalog ready (${count} perfumes, ${groups} built-in groups)`);
@@ -226,7 +229,7 @@ function activityGroup(extra = {}) {
 
 router.get("/perfumes", async (req, res) => {
   const [list, reviewStats, likeStats] = await Promise.all([
-    Perfume.find().populate("addedBy", "username").sort({ createdAt: 1 }),
+    Perfume.find().populate("addedBy", "username").populate("notesAddedBy", "username").sort({ createdAt: 1 }),
     Review.aggregate([activityGroup({ ratingSum: { $sum: "$rating" } })]),
     Like.aggregate([activityGroup()]),
   ]);
@@ -321,6 +324,115 @@ router.put(
   }
 );
 
+/* ---------- Performance votes (longevity, sillage, value) — one per member per perfume ---------- */
+const PERF_KEYS = ["longevity", "sillage", "value"];
+
+const WEAR_KEYS = ["Spring", "Summer", "Fall", "Winter", "Day", "Night"];
+
+// Shared totals for a perfume (performance per level, when-to-wear picks, agree votes)
+// + the signed-in member's own selections
+async function performanceFor(slug, user) {
+  const [rows, mine] = await Promise.all([
+    PerformanceVote.aggregate([
+      { $match: { perfume: slug } },
+      { $facet: {
+        ...Object.fromEntries(PERF_KEYS.map((k) => [k, [{ $match: { [k]: { $ne: null } } }, { $group: { _id: `$${k}`, n: { $sum: 1 } } }]])),
+        wear: [{ $unwind: "$wear" }, { $group: { _id: "$wear", n: { $sum: 1 } } }],
+        agree: [{ $unwind: "$agree" }, { $group: { _id: "$agree", n: { $sum: 1 } } }],
+      } },
+    ]),
+    user ? PerformanceVote.findOne({ perfume: slug, user: user._id }) : null,
+  ]);
+  const counts = {};
+  for (const k of PERF_KEYS) {
+    counts[k] = [1, 2, 3, 4, 5].map((lvl) => ((rows[0][k] || []).find((r) => r._id === lvl) || { n: 0 }).n);
+  }
+  const voters = await PerformanceVote.countDocuments({ perfume: slug, $or: PERF_KEYS.map((k) => ({ [k]: { $ne: null } })) });
+  const toMap = (list) => Object.fromEntries((list || []).map((r) => [r._id, r.n]));
+  return {
+    counts,
+    voters,
+    mine: mine ? Object.fromEntries(PERF_KEYS.map((k) => [k, mine[k] || null])) : { longevity: null, sillage: null, value: null },
+    wear: { counts: { ...Object.fromEntries(WEAR_KEYS.map((k) => [k, 0])), ...toMap(rows[0].wear) }, mine: mine ? mine.wear : [] },
+    agree: { counts: toMap(rows[0].agree), mine: mine ? mine.agree : [] },
+  };
+}
+
+router.get("/perfumes/:slug/performance", async (req, res) => {
+  res.json(await performanceFor(req.params.slug, req.user));
+});
+
+// Set (or clear with level: null) your vote for one measure
+router.put("/perfumes/:slug/performance", requireUser, async (req, res) => {
+  if (!(await requirePerfume(req, res))) return;
+  const key = req.body.key;
+  const lvl = req.body.level === null ? null : Number(req.body.level);
+  if (!PERF_KEYS.includes(key)) return res.status(400).json({ error: "Unknown measure." });
+  if (lvl !== null && (!Number.isInteger(lvl) || lvl < 1 || lvl > 5)) return res.status(400).json({ error: "Please pick a level from 1 to 5." });
+  await PerformanceVote.findOneAndUpdate(
+    { user: req.user._id, perfume: req.params.slug },
+    { $set: { [key]: lvl }, $setOnInsert: { user: req.user._id, perfume: req.params.slug } },
+    { upsert: true, runValidators: true, setDefaultsOnInsert: true }
+  );
+  res.json(await performanceFor(req.params.slug, req.user));
+});
+
+// Pick / unpick a season or time of day: { pick: "Fall", on: true }
+router.put("/perfumes/:slug/wear", requireUser, async (req, res) => {
+  if (!(await requirePerfume(req, res))) return;
+  const pick = String(req.body.pick || "");
+  if (!WEAR_KEYS.includes(pick)) return res.status(400).json({ error: "Unknown season or time." });
+  await PerformanceVote.findOneAndUpdate(
+    { user: req.user._id, perfume: req.params.slug },
+    { [req.body.on ? "$addToSet" : "$pull"]: { wear: pick }, $setOnInsert: { user: req.user._id, perfume: req.params.slug } },
+    { upsert: true, setDefaultsOnInsert: true }
+  );
+  res.json(await performanceFor(req.params.slug, req.user));
+});
+
+// Agree / un-agree with one of the default pros or cons: { key: "pros:<text>", on: true }
+router.put("/perfumes/:slug/agree", requireUser, async (req, res) => {
+  if (!(await requirePerfume(req, res))) return;
+  const key = String(req.body.key || "");
+  if (!/^(pros|cons):.{1,190}$/.test(key)) return res.status(400).json({ error: "Unknown pro or con." });
+  if (req.body.on) {
+    const existing = await PerformanceVote.findOne({ user: req.user._id, perfume: req.params.slug }, "agree");
+    if (existing && existing.agree.length >= 30 && !existing.agree.includes(key)) return res.status(400).json({ error: "Too many votes on this perfume." });
+  }
+  await PerformanceVote.findOneAndUpdate(
+    { user: req.user._id, perfume: req.params.slug },
+    { [req.body.on ? "$addToSet" : "$pull"]: { agree: key }, $setOnInsert: { user: req.user._id, perfume: req.params.slug } },
+    { upsert: true, setDefaultsOnInsert: true }
+  );
+  res.json(await performanceFor(req.params.slug, req.user));
+});
+
+/* ---------- Notes: the first member to see a perfume without notes can add them ---------- */
+router.put("/perfumes/:slug/notes", requireUser, async (req, res) => {
+  const input = Array.isArray(req.body.notes) ? req.body.notes : String(req.body.notes || "").split(",");
+  const notes = [...new Set(input.map((n) => text(n, 40)).filter(Boolean))].slice(0, 8);
+  if (!notes.length) return res.status(400).json({ error: "Please add at least one note." });
+
+  // only succeeds while the perfume still has no notes (safe if two people submit at once)
+  const updated = await Perfume.findOneAndUpdate(
+    { slug: req.params.slug, $or: [{ notes: { $size: 0 } }, { notes: { $exists: false } }] },
+    { $set: { notes, notesAddedBy: req.user._id } },
+    { new: true }
+  );
+  if (!updated) {
+    const perfume = await Perfume.findOne({ slug: req.params.slug }).populate("notesAddedBy", "username");
+    if (!perfume) return res.status(404).json({ error: "Perfume not found." });
+    return res.status(409).json({
+      error: "Someone already added notes to this perfume.",
+      notes: perfume.notes,
+      notesAddedBy: perfume.notesAddedBy ? perfume.notesAddedBy.username : null,
+    });
+  }
+  const payload = { slug: updated.slug, notes: updated.notes, notesAddedBy: req.user.username };
+  realtime.emitToAll("perfume:notes", payload);   // update everyone viewing it, live
+  res.json(payload);
+});
+
 /* ---------- Reviews & likes ---------- */
 async function requirePerfume(req, res) {
   const perfume = await Perfume.findOne({ slug: req.params.slug });
@@ -331,32 +443,60 @@ async function requirePerfume(req, res) {
 router.get("/perfumes/:slug/reviews", async (req, res) => {
   const [list, mine] = await Promise.all([
     Review.find({ perfume: req.params.slug }).sort({ likesCount: -1, createdAt: -1 }).limit(60).populate("user", "username displayName"),
-    req.user ? Review.findOne({ perfume: req.params.slug, user: req.user._id }).populate("user", "username displayName") : null,
+    req.user ? Review.find({ perfume: req.params.slug, user: req.user._id }).sort({ createdAt: -1 }).populate("user", "username displayName") : [],
   ]);
-  const all = mine && !list.some((r) => r._id.equals(mine._id)) ? [mine, ...list] : list;
+  const all = [...mine.filter((m) => !list.some((r) => r._id.equals(m._id))), ...list];
   const counts = await Review.aggregate([{ $match: { perfume: req.params.slug } }, { $group: { _id: "$rating", n: { $sum: 1 } } }]);
   const breakdown = [1, 2, 3, 4, 5].map((star) => (counts.find((c) => c._id === star) || { n: 0 }).n);   // index 0 = 1★
   const total = breakdown.reduce((a, b) => a + b, 0);
   res.json({ reviews: all.filter((r) => r.user).map((r) => reviewJSON(r, req.user)), total, breakdown });
 });
 
-router.put("/perfumes/:slug/review", requireUser, async (req, res) => {
-  if (!(await requirePerfume(req, res))) return;
+function reviewInput(req, res) {
   const rating = Number(req.body.rating);
   const body = text(req.body.text, 1000);
-  if (!Number.isInteger(rating) || rating < 1 || rating > 5) return res.status(400).json({ error: "Please choose a star rating." });
-  if (body.length < 10) return res.status(400).json({ error: "Please write at least a few words (10+ characters)." });
-  await Review.findOneAndUpdate(
-    { user: req.user._id, perfume: req.params.slug },
-    { rating, text: body },
-    { upsert: true, runValidators: true, setDefaultsOnInsert: true }
-  );
-  res.json({ stats: await statsFor(req.params.slug) });
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) { res.status(400).json({ error: "Please choose a star rating." }); return null; }
+  if (body.length < 10) { res.status(400).json({ error: "Please write at least a few words (10+ characters)." }); return null; }
+  return { rating, text: body };
+}
+
+// Tell open pages that review activity changed (e.g. "Top reviewers this month")
+const reviewsChanged = (slug) => realtime.emitToAll("reviews:changed", { perfume: slug });
+
+// Post a review (members can review the same perfume again later)
+router.post("/perfumes/:slug/reviews", requireUser, async (req, res) => {
+  if (!(await requirePerfume(req, res))) return;
+  const input = reviewInput(req, res);
+  if (!input) return;
+  await Review.create({ user: req.user._id, perfume: req.params.slug, ...input });
+  reviewsChanged(req.params.slug);
+  res.status(201).json({ stats: await statsFor(req.params.slug) });
 });
 
-router.delete("/perfumes/:slug/review", requireUser, async (req, res) => {
-  await Review.deleteOne({ user: req.user._id, perfume: req.params.slug });
-  res.json({ stats: await statsFor(req.params.slug) });
+// Edit / delete one of your own reviews
+async function myReview(req, res) {
+  if (!mongoose.isValidObjectId(req.params.id)) { res.status(404).json({ error: "Review not found." }); return null; }
+  const review = await Review.findOne({ _id: req.params.id, user: req.user._id });
+  if (!review) res.status(404).json({ error: "Review not found." });
+  return review;
+}
+
+router.put("/reviews/:id", requireUser, async (req, res) => {
+  const review = await myReview(req, res);
+  if (!review) return;
+  const input = reviewInput(req, res);
+  if (!input) return;
+  Object.assign(review, input);
+  await review.save();
+  res.json({ stats: await statsFor(review.perfume) });
+});
+
+router.delete("/reviews/:id", requireUser, async (req, res) => {
+  const review = await myReview(req, res);
+  if (!review) return;
+  await review.deleteOne();
+  reviewsChanged(review.perfume);
+  res.json({ stats: await statsFor(review.perfume) });
 });
 
 router.put("/perfumes/:slug/like", requireUser, async (req, res) => {
@@ -465,11 +605,15 @@ router.get("/members", async (req, res) => {
   res.json({ users: users.map((u) => ({ username: u.username, displayName: u.displayName })) });
 });
 
+// ?period=month -> ranked by reviews submitted since the 1st of the current month
 router.get("/members/top", async (req, res) => {
   const limit = limitParam(req.query.limit, 5, 20);
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const top = await Review.aggregate([
+    ...(req.query.period === "month" ? [{ $match: { createdAt: { $gte: monthStart } } }] : []),
     { $group: { _id: "$user", reviews: { $sum: 1 }, helpful: { $sum: "$likesCount" } } },
-    { $sort: { reviews: -1, helpful: -1 } },
+    { $sort: { reviews: -1, helpful: -1, _id: 1 } },
     { $limit: limit },
     { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "user" } },
     { $unwind: "$user" },

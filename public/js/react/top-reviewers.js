@@ -34,7 +34,7 @@
         h("p", { className: "reviewer__name" },
           h("a", { className: "member-link", href }, reviewer.displayName)),
         h("p", { className: "reviewer__meta" },
-          `${reviewer.reviews} reviews · ${app.formatCount(reviewer.followers)} followers`)),
+          `${reviewer.reviews} review${reviewer.reviews === 1 ? "" : "s"} this month · ${app.formatCount(reviewer.followers)} followers`)),
       isMe ? null : h(FollowButton, { following, busy, onClick: () => onFollow(reviewer.username) }));
   }
 
@@ -46,7 +46,8 @@
 
     const load = useCallback(async () => {
       try {
-        const res = await app.api("/members/top?limit=4");
+        // top 4 by reviews submitted during the current month
+        const res = await app.api("/members/top?period=month&limit=4");
         setReviewers(res.users);
         setError("");
       } catch (err) {
@@ -64,13 +65,19 @@
         setSession(app.getSession());
         setReviewers((list) => list && list.map((u) => (u.username === username ? { ...u, followers } : u)));
       };
+      // re-rank when anyone posts or deletes a review (live), and once a minute as a fallback
+      const onReviews = () => load();
+      const timer = setInterval(load, 60 * 1000);
       document.addEventListener("lumiere:ready", onReady);
       document.addEventListener("lumiere:auth", onAuth);
       document.addEventListener("lumiere:follow", onFollow);
+      document.addEventListener("lumiere:reviews-changed", onReviews);
       return () => {
+        clearInterval(timer);
         document.removeEventListener("lumiere:ready", onReady);
         document.removeEventListener("lumiere:auth", onAuth);
         document.removeEventListener("lumiere:follow", onFollow);
+        document.removeEventListener("lumiere:reviews-changed", onReviews);
       };
     }, [load]);
 
@@ -85,7 +92,7 @@
     let body;
     if (error) body = h("li", { className: "activity__empty" }, error);
     else if (!reviewers) body = h("li", { className: "activity__empty" }, "Loading…");
-    else if (!reviewers.length) body = h("li", { className: "activity__empty" }, "No reviewers yet.");
+    else if (!reviewers.length) body = h("li", { className: "activity__empty" }, "No reviews yet this month — be the first!");
     else {
       body = reviewers.map((r) => h(ReviewerRow, {
         key: r.username,
@@ -100,7 +107,7 @@
     return h("div", { className: "panel" },
       h("div", { className: "panel__head" },
         h("h2", { className: "panel__title" }, "Top reviewers"),
-        h("a", { href: "#", className: "link link--sm" }, "View all")),
+        h("span", { className: "panel__meta" }, new Date().toLocaleDateString("en-US", { month: "long" }))),
       h("ul", { className: "reviewers", "aria-live": "polite" }, body));
   }
 

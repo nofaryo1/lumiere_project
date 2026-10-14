@@ -12,8 +12,8 @@ const reviewSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// One review per person per perfume (editing replaces it)
-reviewSchema.index({ user: 1, perfume: 1 }, { unique: true });
+// A member can review the same perfume more than once (not unique)
+reviewSchema.index({ user: 1, perfume: 1 });
 reviewSchema.index({ createdAt: -1 });
 reviewSchema.index({ likesCount: -1, createdAt: -1 });
 
