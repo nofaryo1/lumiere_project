@@ -11,6 +11,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="/css/style.css" />
+  <script>
+    /* Opening a page link directly (e.g. #perfume/...): keep the homepage hidden until main.js
+       has drawn that page, so it doesn't flash first. */
+    if (/^#(?:(?:perfume|profile|group|messages)\/.+|messages|groups|create-group|add-perfume|all-reviews|about|privacy|help)$/.test(location.hash)) {
+      document.documentElement.classList.add("is-opening-view");
+      setTimeout(function () { document.documentElement.classList.remove("is-opening-view"); }, 5000);   // never stay hidden
+    }
+  </script>
 </head>
 <body>
 
@@ -24,16 +32,16 @@
 
       <form class="header-search" role="search" data-search>
         <svg class="header-search__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input type="search" placeholder="Search perfumes, brands, notes…" aria-label="Search perfumes" autocomplete="off" />
+        <input type="search" placeholder="Search perfumes, notes or members…" aria-label="Search perfumes, brands, notes and members" autocomplete="off" />
         <div class="search-suggest" hidden></div>
       </form>
 
       <nav class="nav" id="nav" aria-label="Main navigation">
         <a href="/" class="nav__link is-active" aria-current="page">Home</a>
-        <a href="#trending" class="nav__link" data-members-only>Discover</a>
-        <a href="#groups" class="nav__link" data-members-only>Community</a>
-        <a href="#reviews" class="nav__link" data-members-only>Reviews</a>
-        <a href="#messages" class="nav__link" data-members-only data-messages-link>Messages <span class="badge" hidden>0</span></a>
+        <a href="#trending" class="nav__link is-locked" aria-disabled="" title="Join the community to unlock" data-members-only><svg class="nav__lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Discover</a>
+        <a href="#groups" class="nav__link is-locked" aria-disabled="" title="Join the community to unlock" data-members-only><svg class="nav__lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Community</a>
+        <a href="#reviews" class="nav__link is-locked" aria-disabled="" title="Join the community to unlock" data-members-only><svg class="nav__lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Reviews</a>
+        <a href="#messages" class="nav__link is-locked" aria-disabled="" title="Join the community to unlock" data-members-only data-messages-link><svg class="nav__lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Messages <span class="badge" hidden>0</span></a>
         <div class="nav__auth-mobile" id="navAuthMobile">
           <!-- Rendered by main.js (log in / sign up, or your account links) -->
         </div>
@@ -41,7 +49,9 @@
 
       <div class="header__actions">
         <div class="header__account" id="headerAccount">
-          <!-- Rendered by main.js (log in / sign up, or your account menu) -->
+          <!-- Re-rendered by main.js (log in / sign up, or your account menu) -->
+          <button class="btn btn--ghost btn--sm header__login" data-auth="login">Log in</button>
+          <button class="btn btn--primary btn--sm header__signup" data-auth="signup">Sign up</button>
         </div>
         <button class="icon-btn nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="nav">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -49,13 +59,30 @@
       </div>
     </div>
   </header>
+  <script>
+    /* Paint the header and hero for the last known login state before the first frame,
+       so nothing shifts on refresh. main.js confirms it once /api/auth/me answers. */
+    (function () {
+      var account = null;
+      try { account = localStorage.getItem("lumiere:account"); } catch (e) { /* storage unavailable */ }
+      if (!account) return;   // the markup above is already the signed-out header
+      document.documentElement.classList.add("is-member");
+      document.getElementById("headerAccount").innerHTML = account;
+      document.querySelectorAll("[data-members-only]").forEach(function (link) {
+        link.classList.remove("is-locked");
+        link.removeAttribute("aria-disabled");
+        link.removeAttribute("title");
+      });
+    })();
+  </script>
 
   <main>
 
     <!-- ============ Search hero ============ -->
     <!-- ============ Video banner: React component (public/js/react/video-banner.js) ============ -->
     <section class="video-section" aria-label="Welcome video">
-      <div class="container" id="videoBannerRoot"></div>
+      <!-- placeholder with the banner's size, so nothing below jumps when React mounts -->
+      <div class="container" id="videoBannerRoot"><div class="video-banner" aria-hidden="true"></div></div>
     </section>
 
     <section class="hero" id="search">
@@ -66,7 +93,7 @@
 
           <form class="hero-search" role="search" data-search>
             <svg class="hero-search__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-            <input type="search" placeholder="Try “sandalwood”, “fresh summer” or a brand…" aria-label="Search perfumes" autocomplete="off" />
+            <input type="search" placeholder="Search perfumes, brands, notes or @members…" aria-label="Search perfumes, brands, notes and members" autocomplete="off" />
             <button type="submit" class="btn btn--primary">Search</button>
             <div class="search-suggest" hidden></div>
           </form>
@@ -81,7 +108,8 @@
           </div>
         </div>
 
-        <aside class="snapshot" aria-label="Community snapshot">
+        <!-- Invisible (but keeping its size) until the login state is known; main.js then shows the welcome or the member search -->
+        <aside class="snapshot is-pending" id="snapshot" aria-label="Community snapshot" aria-busy="true">
           <div class="snapshot__head">
             <span class="live-dot" aria-hidden="true"></span>
             <span>Live in the community</span>
@@ -223,6 +251,21 @@
     </section>
 
   </main>
+  <script>
+    /* Refresh: reserve the home sections at the heights they had last time (saved by main.js),
+       so the restored scroll position doesn't jump while their data loads. */
+    (function () {
+      var root = document.documentElement, saved = null;
+      if (root.classList.contains("is-member")) document.getElementById("activityTabs").hidden = false;   // members see Everyone / Following
+      if (root.classList.contains("is-opening-view")) return;
+      try { saved = JSON.parse(sessionStorage.getItem("lumiere:layout")); } catch (e) { /* storage unavailable */ }
+      if (!saved || saved.w !== window.innerWidth || saved.member !== root.classList.contains("is-member")) return;
+      Object.keys(saved.heights).forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.style.minHeight = saved.heights[id] + "px";
+      });
+    })();
+  </script>
 
   <!-- ============ Perfume page (rendered by main.js) ============ -->
   <div class="perfume-view" id="perfumeView" hidden></div>
@@ -234,30 +277,14 @@
         <a href="/" class="logo"><span class="logo__mark" aria-hidden="true"></span>LUMIERE</a>
         <p>The community for discovering, reviewing and talking about fragrance.</p>
       </div>
-      <div>
-        <h3>Discover</h3>
-        <ul>
-          <li><a href="#trending">Trending</a></li>
-          <li><a href="#notes">Notes</a></li>
-          <li><a href="#recommended">Recommendations</a></li>
-        </ul>
-      </div>
-      <div>
-        <h3>Community</h3>
-        <ul>
-          <li><a href="#reviews">Reviews</a></li>
-          <li><a href="#activity">Activity</a></li>
-          <li><a href="#">Guidelines</a></li>
-        </ul>
-      </div>
-      <div>
+      <nav class="footer__links" aria-label="LUMIERE">
         <h3>LUMIERE</h3>
         <ul>
-          <li><a href="#">About</a></li>
-          <li><a href="#">Help center</a></li>
-          <li><a href="#">Privacy</a></li>
+          <li><a href="#about">About</a></li>
+          <li><a href="#help">Help center</a></li>
+          <li><a href="#privacy">Privacy</a></li>
         </ul>
-      </div>
+      </nav>
     </div>
     <div class="container footer__bottom">
       <p>&copy; <span id="year"></span> LUMIERE. All rights reserved.</p>

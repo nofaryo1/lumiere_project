@@ -445,11 +445,13 @@
       let memberTimer = 0;
       let memberReq = 0;
       let members = [];
+      let membersLoading = false;
 
       const render = () => {
         const q = input.value.trim();
         if (!q) { box.hidden = true; return; }
-        const hits = perfumes.filter((p) => matchesQuery(p, q)).slice(0, 5);
+        const membersOnly = q.startsWith("@");
+        const hits = membersOnly ? [] : perfumes.filter((p) => matchesQuery(p, q)).slice(0, 5);
         const perfumeRows = hits.map((p) => {
           const r = ratingFor(p);
           const meta = [p.brand, p.notes.slice(0, 2).join(", ")].filter(Boolean).join(" · ");
@@ -467,23 +469,28 @@
             </button>`).join("");
         box.innerHTML = (perfumeRows ? `<p class="suggest-group">Perfumes</p>${perfumeRows}` : "")
           + (memberRows ? `<p class="suggest-group">Members</p>${memberRows}` : "")
-          || `<p class="suggest-empty">Nothing found for “${escapeHTML(q)}”</p>`;
+          || (membersLoading ? `<p class="suggest-empty">Searching members…</p>` : `<p class="suggest-empty">Nothing found for “${escapeHTML(q)}”</p>`);
         box.hidden = false;
         active = -1;
       };
 
       const update = () => {
-        render();
         clearTimeout(memberTimer);
         const q = input.value.trim();
-        if (q.length < 2) { members = []; return; }
+        const name = q.replace(/^@/, "");
+        membersLoading = !!name;
+        render();
+        if (!name) { members = []; return; }
+        // members: all accounts in MongoDB (new and demo), closest matches first
         memberTimer = setTimeout(async () => {
           const id = ++memberReq;
           try {
-            const res = await api(`/members?search=${encodeURIComponent(q)}&limit=4`);
-            if (id === memberReq && input.value.trim() === q) { members = res.users; render(); }
-          } catch (err) { /* perfumes still work without member results */ }
-        }, 250);
+            const res = await api(`/members?search=${encodeURIComponent(name)}&limit=${q.startsWith("@") ? 6 : 4}`);
+            if (id === memberReq && input.value.trim() === q) { members = res.users; membersLoading = false; render(); }
+          } catch (err) {
+            if (id === memberReq) { membersLoading = false; render(); }   // perfumes still work without member results
+          }
+        }, 150);
       };
 
       const choose = (item) => {
@@ -510,11 +517,19 @@
         if (item) choose(item);
       });
 
-      form.addEventListener("submit", (e) => {
+      form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const chosen = $(".suggest-item.is-active", box);
-        if (chosen) choose(chosen);
-        else runSearch(input.value);
+        const q = input.value.trim();
+        if (chosen) return choose(chosen);
+        if (q.startsWith("@") && q.length > 1) {
+          // "@username" + Enter -> open the best matching member
+          const res = await api(`/members?search=${encodeURIComponent(q.slice(1))}&limit=1`).catch(() => ({ users: [] }));
+          if (res.users[0]) { closeAllSuggestions(); input.blur(); location.hash = `profile/${encodeURIComponent(res.users[0].username)}`; }
+          else toast(`No members match “${q}”`);
+          return;
+        }
+        runSearch(input.value);
       });
     });
 
@@ -1815,6 +1830,110 @@
   }
 
   /* =======================================================
+     Info pages: About (#about) · Help center (#help) · Privacy (#privacy)
+     ======================================================= */
+  const SUPPORT_EMAIL = "support@lumiere.com";
+
+  function infoPage(crumb, body) {
+    return `
+      <div class="container pv info-page">
+        <nav class="pv__crumbs" aria-label="Breadcrumb">
+          ${BACK_BUTTON}
+          <span>LUMIERE / <strong>${crumb}</strong></span>
+        </nav>
+        <article class="panel info-card">${body}</article>
+      </div>`;
+  }
+
+  function renderAboutPage() {
+    return infoPage("About", `
+      <p class="info-card__eyebrow">About LUMIERE</p>
+      <h1 class="info-card__title">Fragrance discovery, made personal</h1>
+      <p class="info-card__lead">LUMIERE is a fragrance community for discovering new scents, sharing honest opinions and learning from other fragrance lovers. Our goal is to make finding your next favorite perfume feel simple, personal and social.</p>
+      <ul class="info-points">
+        <li><strong>Discover</strong><span>Explore perfumes by brand, notes and scent family, and see what's trending right now.</span></li>
+        <li><strong>Review honestly</strong><span>Rate what you've tried and read real opinions — longevity, sillage, when to wear it.</span></li>
+        <li><strong>Connect</strong><span>Follow other members, join discussion groups and chat with people who share your taste.</span></li>
+      </ul>
+      <div class="info-card__actions">
+        <a class="btn btn--primary" href="#trending">Explore perfumes</a>
+        ${session.user ? '<a class="btn btn--ghost" href="#groups">Browse groups</a>' : '<button class="btn btn--ghost" data-auth="signup">Join the community</button>'}
+      </div>`);
+  }
+
+  function renderHelpPage() {
+    const me = session.user;
+    return infoPage("Help center", `
+      <p class="info-card__eyebrow">Help center</p>
+      <h1 class="info-card__title">How can we help?</h1>
+      <p class="info-card__lead">Have a question or need a hand? Email us at <a class="link" href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>, or leave your name and email below and we'll get back to you.</p>
+      <form class="info-form" id="contactForm" novalidate>
+        <div class="info-form__row">
+          <label class="field">
+            <span class="field__label">Name</span>
+            <input name="name" maxlength="80" autocomplete="name" value="${me ? escapeHTML(me.displayName) : ""}" required />
+            <span class="field__error" data-error-for="name"></span>
+          </label>
+          <label class="field">
+            <span class="field__label">Email</span>
+            <input name="email" type="email" maxlength="120" autocomplete="email" required />
+            <span class="field__error" data-error-for="email"></span>
+          </label>
+        </div>
+        <label class="field">
+          <span class="field__label">Message <span class="field__optional">(optional)</span></span>
+          <textarea name="message" rows="3" maxlength="1000" placeholder="Tell us a little about what you need"></textarea>
+        </label>
+        <div class="info-form__foot">
+          <span class="composer__error" id="contactError" role="alert"></span>
+          <button type="submit" class="btn btn--primary">Send</button>
+        </div>
+      </form>
+      <p class="info-form__done" id="contactDone" role="status" hidden>Thanks! We've got your details and will get back to you soon.</p>`);
+  }
+
+  function renderPrivacyPage() {
+    return infoPage("Privacy", `
+      <p class="info-card__eyebrow">Privacy &amp; terms</p>
+      <h1 class="info-card__title">Using LUMIERE</h1>
+      <p class="info-card__lead">By using LUMIERE, you agree to these simple rules. We keep them short on purpose.</p>
+      <section class="info-section">
+        <h2>Be respectful</h2>
+        <p>Use the platform kindly and honestly. Don't harass other members, post spam or misuse any features.</p>
+      </section>
+      <section class="info-section">
+        <h2>Your account information</h2>
+        <p>We store your account details — like your name, username and email — only to make the site work: signing in, your profile, likes, reviews and messages. We don't sell your information.</p>
+      </section>
+      <section class="info-section">
+        <h2>What other members can see</h2>
+        <p>Reviews, ratings, group posts, replies and your public profile are visible to other members. Private messages are only visible to you and the person you're chatting with.</p>
+      </section>
+      <p class="info-card__note">Questions? Contact us at <a class="link" href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a> or visit the <a class="link" href="#help">Help center</a>.</p>`);
+  }
+
+  async function submitContact(form) {
+    const body = { name: form.name.value.trim(), email: form.email.value.trim(), message: form.message.value.trim() };
+    const fields = {};
+    if (!body.name) fields.name = "Please enter your name.";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) fields.email = "Please enter a valid email.";
+    setFieldErrors(form, fields);
+    $("#contactError").textContent = "";
+    if (Object.keys(fields).length) return;
+    const button = $("button[type=submit]", form);
+    button.disabled = true;
+    try {
+      await api("/contact", { method: "POST", body });
+      form.hidden = true;
+      $("#contactDone").hidden = false;
+    } catch (err) {
+      setFieldErrors(form, err.data && err.data.fields);
+      $("#contactError").textContent = err.message;
+      button.disabled = false;
+    }
+  }
+
+  /* =======================================================
      Accounts: session, sign up / log in window, account menu
      ======================================================= */
   const session = { user: null, likes: new Set(), following: new Set() };
@@ -1847,7 +1966,6 @@
     return data;
   }
 
-  const LOCK_ICON = '<svg class="nav__lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
   const CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 
   function renderAccountArea() {
@@ -1862,6 +1980,7 @@
       mobile.innerHTML = `
         <button class="btn btn--ghost" data-auth="login">Log in</button>
         <button class="btn btn--primary" data-auth="signup">Sign up</button>`;
+      try { localStorage.removeItem("lumiere:account"); } catch (err) { /* storage unavailable */ }
       return;
     }
     const profileHref = `#profile/${encodeURIComponent(me.username)}`;
@@ -1883,26 +2002,30 @@
       <a class="btn btn--ghost" href="${profileHref}">My profile</a>
       <a class="btn btn--primary" href="#add-perfume">Add a perfume</a>
       <button class="btn btn--ghost nav__logout" data-logout>Log out</button>`;
+    // remembered so the next page load paints this header straight away (see the script in home.html)
+    try { localStorage.setItem("lumiere:account", desktop.innerHTML); } catch (err) { /* storage unavailable */ }
   }
 
+  // Signed out: welcome + join. Signed in: no box (members are found with the main search).
   function renderSnapshot() {
     const me = session.user;
-    $("#snapshotWelcome").innerHTML = me
-      ? `<p class="snapshot__title">Welcome back, ${escapeHTML(me.displayName.split(" ")[0])} 👋</p>
-         <p>Rate the perfumes you've tried, like your favorites, or add one the community hasn't found yet.</p>`
-      : `<p class="snapshot__title">Welcome to LUMIERE 👋</p>
+    const box = $("#snapshot");
+    // the login state is known now -> show the right thing (the box is hidden on page load to avoid a flash)
+    box.classList.remove("is-pending");
+    box.removeAttribute("aria-busy");
+    box.hidden = !!me;
+    $(".hero").classList.toggle("hero--solo", !!me);
+    if (!me) {
+      $("#snapshotWelcome").innerHTML = `<p class="snapshot__title">Welcome to LUMIERE 👋</p>
          <p>Want to chat with other fragrance lovers and share your opinion in reviews? Join the community — it only takes a minute.</p>`;
-    $("#snapshotCta").innerHTML = me
-      ? `<div class="snapshot__actions">
-           <a href="#add-perfume" class="btn btn--primary">Add a perfume</a>
-           <a href="#profile/${encodeURIComponent(me.username)}" class="btn btn--ghost">My profile</a>
-         </div>`
-      : `<button class="btn btn--primary btn--block" data-auth="signup">Join the community — it’s free</button>`;
+      $("#snapshotCta").innerHTML = `<button class="btn btn--primary btn--block" data-auth="signup">Join the community — it’s free</button>`;
+    }
   }
 
   // Signed-out visitors only get "Home"; the other sections are for members
   function applyAuthState() {
     const signedIn = !!session.user;
+    document.documentElement.classList.toggle("is-member", signedIn);
     $$("[data-members-only]").forEach((link) => {
       link.classList.toggle("is-locked", !signedIn);
       link.toggleAttribute("aria-disabled", !signedIn);
@@ -2105,9 +2228,6 @@
 
 
   function initAccounts() {
-    // Lock icons for members-only nav links (shown only while signed out)
-    $$("[data-members-only]").forEach((link) => link.insertAdjacentHTML("afterbegin", LOCK_ICON));
-
     document.addEventListener("click", (e) => {
       const locked = e.target.closest("[data-members-only].is-locked");
       if (locked) {
@@ -2181,6 +2301,7 @@
     view.innerHTML = html;
     view.hidden = false;
     $("main").hidden = true;
+    document.documentElement.classList.remove("is-opening-view");
     document.title = `${title} — LUMIERE`;
     window.scrollTo({ top: 0, behavior: "instant" });
     paintNotesCanvases(view);
@@ -2189,6 +2310,7 @@
   function showHome() {
     homeSeen = true;
     renderCurrent = null;
+    document.documentElement.classList.remove("is-opening-view");
     const view = $("#perfumeView");
     if (view.hidden) return;
     view.hidden = true;
@@ -2289,6 +2411,9 @@
     if ((m = hash.match(/^#profile\/(.+)$/))) return showProfile(decodeURIComponent(m[1]), token);
     if (hash === "#add-perfume") return showAddPerfume();
     if (hash === "#all-reviews") return showAllReviews();
+    if (hash === "#about") { renderCurrent = renderAboutPage; return showView(renderAboutPage(), "About"); }
+    if (hash === "#privacy") { renderCurrent = renderPrivacyPage; return showView(renderPrivacyPage(), "Privacy"); }
+    if (hash === "#help") { renderCurrent = null; return showView(renderHelpPage(), "Help center"); }   // keep what's typed
     if (hash === "#groups") return showGroups();
     if (hash === "#messages") return showMessenger();
     if ((m = hash.match(/^#messages\/(.+)$/))) return showMessenger(decodeURIComponent(m[1]));
@@ -2539,6 +2664,7 @@
       if (form.id === "reviewForm") return saveReview(currentPerfume(), form);
       if (form.id === "addForm") return submitAddForm(form);
       if (form.id === "notesForm") return submitNotes(form);
+      if (form.id === "contactForm") return submitContact(form);
       if (form.id === "postForm") return submitPost(form);
       if (form.id === "createGroupForm") return submitCreateGroup(form);
       if (form.dataset.replyForm) return submitReply(form);
@@ -3680,5 +3806,41 @@
 
     appReady = true;
     document.dispatchEvent(new CustomEvent("lumiere:ready"));
+    keepLayoutSteady();
   });
+
+  /* ---------- Steady layout on refresh ----------
+     The home sections fill in as their data arrives. Their heights are saved when leaving the page,
+     the script after </main> in home.html reserves them on the next load (so the restored scroll
+     position doesn't jump), and they're released once the page has settled. */
+  const STEADY_IDS = ["filterBar", "trendingGrid", "reviewList", "activityFeed", "topReviewersRoot", "groupsTeaser", "trendsChart", "groupChart"];
+
+  function keepLayoutSteady() {
+    window.addEventListener("pagehide", () => {
+      if ($("main").hidden) return;   // a page is open, not the homepage
+      const heights = {};
+      STEADY_IDS.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el && !el.style.minHeight) heights[id] = Math.round(el.offsetHeight);
+      });
+      try {
+        sessionStorage.setItem("lumiere:layout", JSON.stringify({ w: window.innerWidth, member: !!session.user, heights }));
+      } catch (err) { /* storage unavailable */ }
+    });
+
+    // release the reserved heights once the sections stop changing (or after a few seconds at most)
+    const reserved = STEADY_IDS.map((id) => document.getElementById(id)).filter((el) => el && el.style.minHeight);
+    if (!reserved.length) return;
+    let quiet;
+    const release = () => {
+      observer.disconnect();
+      clearTimeout(quiet);
+      clearTimeout(cap);
+      reserved.forEach((el) => { el.style.minHeight = ""; });
+    };
+    const observer = new MutationObserver(() => { clearTimeout(quiet); quiet = setTimeout(release, 700); });
+    reserved.forEach((el) => observer.observe(el, { childList: true, subtree: true }));
+    quiet = setTimeout(release, 700);
+    const cap = setTimeout(release, 6000);
+  }
 })();

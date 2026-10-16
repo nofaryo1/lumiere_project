@@ -18,6 +18,7 @@ const chat = require("../lib/chat");
 const realtime = require("../lib/realtime");
 const Message = require("../models/Message");
 const PerformanceVote = require("../models/PerformanceVote");
+const ContactRequest = require("../models/ContactRequest");
 const { slugify, normalize, nameKey, perfumeKey } = require("../lib/perfumeKey");
 const {
   hashPassword, checkPassword, startSession, endSession,
@@ -597,11 +598,24 @@ router.get("/users/:username/followers", (req, res) => followList(req, res, "fol
 router.get("/users/:username/following", (req, res) => followList(req, res, "following"));
 
 /* ---------- Members: search + top reviewers ---------- */
+// Search every member (registered and demo) by name or @username; closest matches first
 router.get("/members", async (req, res) => {
-  const q = text(req.query.search, 40);
+  const q = text(req.query.search, 40).replace(/^@/, "");
   if (!q) return res.json({ users: [] });
+  const limit = limitParam(req.query.limit, 5, 20);
   const re = new RegExp(escapeRegex(q), "i");
-  const users = await User.find({ $or: [{ username: re }, { displayName: re }] }).limit(limitParam(req.query.limit, 5, 20));
+  const found = await User.find({ $or: [{ username: re }, { displayName: re }] }, "username displayName").limit(limit * 4);
+  const lower = q.toLowerCase();
+  const rank = (u) => {
+    const name = u.displayName.toLowerCase();
+    if (u.username === lower || name === lower) return 0;
+    if (u.username.startsWith(lower) || name.startsWith(lower)) return 1;
+    if (name.split(/\s+/).some((w) => w.startsWith(lower))) return 2;
+    return 3;
+  };
+  const users = found
+    .sort((a, b) => rank(a) - rank(b) || a.displayName.localeCompare(b.displayName))
+    .slice(0, limit);
   res.json({ users: users.map((u) => ({ username: u.username, displayName: u.displayName })) });
 });
 
@@ -992,6 +1006,21 @@ router.get("/stats/review-trends", async (req, res) => {
   };
   trendCache = { at: Date.now(), data };
   res.json(data);
+});
+
+/* ---------- Help center: "get back to me" requests ---------- */
+const contactLimiter = rateLimit({ max: 5, windowMs: 15 * 60 * 1000 });
+
+router.post("/contact", contactLimiter, async (req, res) => {
+  const name = text(req.body.name, 80);
+  const email = text(req.body.email, 120).toLowerCase();
+  const message = text(req.body.message, 1000);
+  const fields = {};
+  if (!name) fields.name = "Please enter your name.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fields.email = "Please enter a valid email.";
+  if (Object.keys(fields).length) return res.status(400).json({ error: "Please fix the highlighted fields.", fields });
+  await ContactRequest.create({ name, email, message, user: req.user ? req.user._id : null });
+  res.status(201).json({ ok: true });
 });
 
 /* ---------- Fallbacks ---------- */
