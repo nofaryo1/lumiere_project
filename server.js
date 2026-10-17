@@ -10,6 +10,7 @@ app.use("/vendor/d3", express.static(path.join(__dirname, "node_modules", "d3", 
 app.use("/vendor/react", express.static(path.join(__dirname, "node_modules", "react", "umd")));
 app.use("/vendor/react-dom", express.static(path.join(__dirname, "node_modules", "react-dom", "umd")));
 app.use("/api", require("./routes/api"));
+require("./lib/startup");   // loads the built-in catalog once MongoDB is connected
 
 // חיבור ל-MongoDB
 mongoose
@@ -17,9 +18,7 @@ mongoose
   .then(() => console.log("MongoDB connected"))
   .catch((error) => console.log("MongoDB connection error:", error.message));
 
-app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "views", "home.html"));
-});
+app.use(require("./routes/pages"));
 
 // HTTP server shared by Express and the live messenger (Socket.io)
 const server = require("http").createServer(app);

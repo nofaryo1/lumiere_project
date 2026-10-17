@@ -14,7 +14,7 @@
   <script>
     /* Opening a page link directly (e.g. #perfume/...): keep the homepage hidden until main.js
        has drawn that page, so it doesn't flash first. */
-    if (/^#(?:(?:perfume|profile|group|messages)\/.+|messages|groups|create-group|add-perfume|all-reviews|about|privacy|help)$/.test(location.hash)) {
+    if (/^#(?:(?:perfume|profile|group|messages|all-reviews|edit-perfume)\/.+|messages|groups|create-group|add-perfume|all-reviews|about|privacy|help)$/.test(location.hash)) {
       document.documentElement.classList.add("is-opening-view");
       setTimeout(function () { document.documentElement.classList.remove("is-opening-view"); }, 5000);   // never stay hidden
     }
@@ -55,6 +55,8 @@
         </div>
         <button class="icon-btn nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="nav">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          <!-- unread messages, for when the Messages link is folded into this menu -->
+          <span class="badge nav-toggle__badge" data-unread-badge aria-hidden="true" hidden>0</span>
         </button>
       </div>
     </div>

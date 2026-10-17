@@ -237,7 +237,8 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
 .nav__link.is-locked .nav__lock { display: inline; }
 
 .header__actions { display: flex; align-items: center; gap: 8px; }
-.nav-toggle { display: none; }
+.nav-toggle { display: none; position: relative; }
+.nav-toggle__badge { position: absolute; top: -6px; right: -6px; margin-left: 0; }
 
 /* Search suggestions dropdown (shared) */
 .search-suggest {
@@ -832,6 +833,11 @@ img.perfume-media__img { mix-blend-mode: multiply; }
 .pv__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
 .pv__actions .action-btn { flex: 0 0 auto; height: 42px; padding: 0 14px; }
 .pv__actions .action-btn--icon { width: 42px; padding: 0; }
+/* Edit / Delete on a perfume you added (perfume page + My Profile > Added) */
+.owner-confirm { align-self: center; font-size: 13.5px; font-weight: 600; color: var(--color-text-2); }
+.action-btn.is-danger, .social-btn.is-danger { color: var(--color-like); }
+.perfume-card__owner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--color-border); }
+.perfume-card__owner .owner-confirm { flex-basis: 100%; font-size: 12.5px; }
 
 .pv__grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; align-items: start; }
 .pv__main, .pv__side { display: grid; gap: 16px; min-width: 0; }

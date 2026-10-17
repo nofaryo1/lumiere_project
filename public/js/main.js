@@ -193,7 +193,7 @@
           </div>`;
   }
 
-  function perfumeCard(p, { rank } = {}) {
+  function perfumeCard(p, { rank, owner = false } = {}) {
     const badge = rank ? `<span class="rank">#${rank}</span>` : "";
     const trend = p.change > 0 ? `<span class="trend">${ICON.up}${p.change}%</span>` : "";
     return `
@@ -215,8 +215,25 @@
               ${ICON.comment}<span>${formatCount(p.real.reviews)}</span>
             </button>
           </div>
+          ${owner && ownsPerfume(p) ? `<div class="perfume-card__owner">${ownerButtons(p, "social-btn")}</div>` : ""}
         </div>
       </article>`;
+  }
+
+  /* ---------- Your own perfumes: Edit / Delete (only the member who added it sees these) ---------- */
+  const ownsPerfume = (p) => !!session.user && p.source === "community" && p.addedBy === session.user.username;
+  let confirmingDelete = null;   // slug waiting for "Yes, delete"
+
+  function ownerButtons(p, cls) {
+    if (confirmingDelete === p.id) {
+      return `
+        <span class="owner-confirm">Delete this perfume?</span>
+        <button class="${cls}" data-cancel-delete>Cancel</button>
+        <button class="${cls} is-danger" data-confirm-delete="${p.id}">Yes, delete</button>`;
+    }
+    return `
+      <a class="${cls}" href="#edit-perfume/${encodeURIComponent(p.id)}">Edit</a>
+      <button class="${cls}" data-delete-perfume="${p.id}">Delete</button>`;
   }
 
   // "Helpful" button on a review (members can't vote on their own)
@@ -1141,31 +1158,38 @@
     });
   }
 
-  /* ---------- Perfumes without notes: the first member can add them ---------- */
+  /* ---------- Notes panel: only the member who added the perfume can edit its notes ---------- */
+  const NOTES_REQUIRED = 3;   // member-added perfumes have exactly 3 notes (same rule as the API)
+  let editingNotes = null;    // slug whose notes are being edited
+  let notesDraft = "";        // what's typed in the edit form (kept if the page re-renders)
+
+  const canEditNotes = (p) => !!session.user && p.source === "community" && p.addedBy === session.user.username;
+
+  function notesCountError(notes) {
+    if (notes.length === NOTES_REQUIRED) return "";
+    return `Please enter exactly ${NOTES_REQUIRED} notes${notes.length ? ` (you have ${notes.length})` : ""}.`;
+  }
+
   function notesPanelBody(p) {
-    if (p.notes.length) {
-      return `${notesCanvasHTML(p.notes)}${p.notesAddedBy
-        ? `<p class="pv__hint notes-credit">Notes added by ${profileLink({ username: p.notesAddedBy, displayName: "@" + p.notesAddedBy })}</p>` : ""}`;
-    }
-    if (!session.user) {
+    if (editingNotes === p.id && canEditNotes(p)) {
       return `
-        <div class="notes-first">
-          <p class="notes-first__title">Be the first to add a note</p>
-          <p class="pv__hint">No one has added notes to ${escapeHTML(p.name)} yet.</p>
-          <button class="btn btn--primary btn--sm" data-auth="login" data-reason="Log in to add notes to ${escapeHTML(p.name)}.">Log in to add notes</button>
-        </div>`;
+        <form class="notes-first" id="notesForm" data-slug="${escapeHTML(p.id)}" novalidate>
+          <p class="notes-first__title">Edit notes</p>
+          <p class="pv__hint">Exactly ${NOTES_REQUIRED} notes, separated with commas.</p>
+          <input name="notes" maxlength="300" value="${escapeHTML(notesDraft)}" placeholder="e.g. Bergamot, Vanilla, Musk" autocomplete="off" aria-label="Notes" />
+          <div class="notes-first__preview" id="notesFormPreview">${notesCanvasHTML(parseNotes(notesDraft))}</div>
+          <div class="notes-first__foot">
+            <span class="composer__error" id="notesError" role="alert"></span>
+            <button type="button" class="btn btn--ghost btn--sm" data-cancel-notes>Cancel</button>
+            <button type="submit" class="btn btn--primary btn--sm">Save notes</button>
+          </div>
+        </form>`;
     }
-    return `
-      <form class="notes-first" id="notesForm" data-slug="${escapeHTML(p.id)}" novalidate>
-        <p class="notes-first__title">Be the first to add a note</p>
-        <p class="pv__hint">What does ${escapeHTML(p.name)} smell like? Separate notes with commas.</p>
-        <input name="notes" maxlength="300" placeholder="e.g. Bergamot, Vanilla, Musk" autocomplete="off" aria-label="Notes" />
-        <div class="notes-first__preview" id="notesFormPreview"></div>
-        <div class="notes-first__foot">
-          <span class="composer__error" id="notesError" role="alert"></span>
-          <button type="submit" class="btn btn--primary btn--sm">Add notes</button>
-        </div>
-      </form>`;
+    const credit = p.notes.length && p.notesAddedBy
+      ? `<p class="pv__hint notes-credit">Notes added by ${profileLink({ username: p.notesAddedBy, displayName: "@" + p.notesAddedBy })}</p>` : "";
+    const edit = canEditNotes(p)
+      ? `<p class="pv__hint notes-credit"><button class="link link--btn" data-edit-notes>${p.notes.length ? "Edit notes" : "Add notes"}</button></p>` : "";
+    return `${notesCanvasHTML(p.notes)}${credit}${edit}`;
   }
 
   // Show notes on a perfume everywhere it appears (page, cards)
@@ -1184,20 +1208,17 @@
     const notes = parseNotes(form.notes.value);
     const error = $("#notesError");
     if (!p) return;
-    if (!notes.length) { error.textContent = "Please add at least one note."; form.notes.focus(); return; }
+    const invalid = notesCountError(notes);
+    if (invalid) { error.textContent = invalid; form.notes.focus(); return; }
     $("button[type=submit]", form).disabled = true;
     try {
       const res = await api(`/perfumes/${encodeURIComponent(p.id)}/notes`, { method: "PUT", body: { notes } });
+      editingNotes = null;
       applyNotes(p, res.notes, res.notesAddedBy);
-      toast(`Thanks! You added ${res.notes.length} note${res.notes.length === 1 ? "" : "s"} to ${p.name}`);
+      toast(`The notes of ${p.name} were updated`);
     } catch (err) {
-      if (err.status === 409 && err.data.notes) {
-        applyNotes(p, err.data.notes, err.data.notesAddedBy);
-        toast("Someone just added notes to this perfume — here they are");
-      } else {
-        error.textContent = err.message;
-        $("button[type=submit]", form).disabled = false;
-      }
+      error.textContent = err.message;
+      $("button[type=submit]", form).disabled = false;
     }
   }
 
@@ -1243,7 +1264,7 @@
       ...others.map((rv) => reviewItem(rv)),
     ].join("");
     const moreNote = r.reviews > real.length && p.realReviews
-      ? `<p class="pv__hint pv__hint--after">Showing the ${real.length} most helpful of ${r.reviews.toLocaleString("en-US")} reviews · <a class="link" href="#all-reviews">See all reviews</a></p>` : "";
+      ? `<p class="pv__hint pv__hint--after">Showing the ${real.length} most helpful of ${r.reviews.toLocaleString("en-US")} reviews · <a class="link" href="#all-reviews/${encodeURIComponent(p.id)}">See all reviews</a></p>` : "";
     const loading = !p.realReviews ? '<p class="pv__hint">Loading member reviews…</p>' : "";
 
     return `
@@ -1285,6 +1306,7 @@
               <button class="btn btn--primary" data-write-review>Write a review</button>
               <button class="action-btn" data-action="love" data-id="${p.id}" aria-pressed="${isLiked(p.id)}" aria-label="Like ${escapeHTML(p.name)}">${ICON.heart}<span>${isLiked(p.id) ? "Liked" : "Like"}</span></button>
               <button class="action-btn action-btn--icon" data-action="share" aria-label="Share">${ICON.share}</button>
+              ${ownsPerfume(p) ? ownerButtons(p, "action-btn") : ""}
             </div>
           </div>
         </section>
@@ -1450,7 +1472,7 @@
         : `<p class="pv__empty">${isMe ? "You haven't" : `${escapeHTML(user.displayName)} hasn't`} joined any groups yet.${isMe ? ' <a class="link" href="#groups">Browse groups</a>' : ""}</p>`;
     } else if (profileTab === "added") {
       content = addedPerfumes.length
-        ? `<div class="perfume-grid">${addedPerfumes.map((p) => perfumeCard(p)).join("")}</div>`
+        ? `<div class="perfume-grid">${addedPerfumes.map((p) => perfumeCard(p, { owner: isMe })).join("")}</div>`
         : `<p class="pv__empty">${who} added any perfumes yet.${isMe ? ' <a class="link" href="#add-perfume">Add a perfume</a>' : ""}</p>`;
     } else {
       const label = profileTab === "followers" ? "followers" : "people they follow";
@@ -1531,10 +1553,11 @@
   /* =======================================================
      All reviews  (#all-reviews)
      ======================================================= */
-  const allReviews = { sort: "popular", scope: "all", rating: "", items: [], total: 0, hasMore: false, loading: false };
+  const allReviews = { sort: "popular", scope: "all", rating: "", perfume: "", items: [], total: 0, hasMore: false, loading: false };   // perfume: slug, or "" for all
 
   function renderAllReviewsPage() {
     const a = allReviews;
+    const only = a.perfume ? byId(a.perfume) || { id: a.perfume, name: "this perfume" } : null;
     const seg = (attr, value, label, current) =>
       `<button role="tab" aria-selected="${current === value}" ${attr}="${value}">${label}</button>`;
     let body;
@@ -1549,12 +1572,14 @@
       <div class="container pv all-reviews">
         <nav class="pv__crumbs" aria-label="Breadcrumb">
           ${BACK_BUTTON}
-          <span>Community / <strong>All reviews</strong></span>
+          ${only
+            ? `<span>Perfumes / <a href="#perfume/${encodeURIComponent(only.id)}">${escapeHTML(only.name)}</a> / <strong>Reviews</strong></span>`
+            : "<span>Community / <strong>All reviews</strong></span>"}
         </nav>
 
         <div class="section-head">
           <div>
-            <h1 class="section-title">All reviews</h1>
+            <h1 class="section-title">${only ? `Reviews of ${escapeHTML(only.name)}` : "All reviews"}</h1>
             <p class="section-sub">${a.loading && !a.items.length ? "&nbsp;" : `${a.total.toLocaleString("en-US")} review${a.total === 1 ? "" : "s"}`}</p>
           </div>
         </div>
@@ -1591,6 +1616,7 @@
     try {
       const q = new URLSearchParams({ sort: a.sort, scope: a.scope, limit: "10", offset: String(reset ? 0 : a.items.length) });
       if (a.rating) q.set("rating", a.rating);
+      if (a.perfume) q.set("perfume", a.perfume);
       const res = await api(`/reviews?${q}`);
       if (renderCurrent !== renderAllReviewsPage || id !== allReviewsRequest) return;
       a.items = reset ? res.reviews : [...a.items, ...res.reviews];
@@ -1611,29 +1637,31 @@
   let addPhoto = null;                  // ready-to-upload JPEG
   let photoWork = null;                 // promise while a photo is being prepared
 
-  function renderAddPage() {
+  // "Add a perfume", or (with `edit`) "Edit perfume" for a perfume you added
+  function renderAddPage(edit = null) {
+    const v = (value) => (edit ? ` value="${escapeHTML(value || "")}"` : "");
     return `
       <div class="container pv">
         <nav class="pv__crumbs" aria-label="Breadcrumb">
           ${BACK_BUTTON}
-          <span>Perfumes / <strong>Add a perfume</strong></span>
+          <span>Perfumes / ${edit ? `${escapeHTML(edit.name)} / <strong>Edit</strong>` : "<strong>Add a perfume</strong>"}</span>
         </nav>
 
         <div class="add">
           <section class="panel add__form-panel">
-            <h1 class="add__title">Add a perfume</h1>
-            <p class="section-sub">Can't find a perfume on LUMIERE? Add it so the community can rate and review it.</p>
+            <h1 class="add__title">${edit ? "Edit perfume" : "Add a perfume"}</h1>
+            <p class="section-sub">${edit ? `Update the details of ${escapeHTML(edit.name)}.` : "Can't find a perfume on LUMIERE? Add it so the community can rate and review it."}</p>
 
-            <form id="addForm" class="add__form" novalidate>
+            <form id="addForm" class="add__form" novalidate${edit ? ` data-editing="${escapeHTML(edit.id)}"` : ""}>
               <div class="add__row">
                 <label class="field">
                   <span class="field__label">Brand</span>
-                  <input name="brand" maxlength="60" placeholder="e.g. Creed" autocomplete="off" required />
+                  <input name="brand" maxlength="60" placeholder="e.g. Creed" autocomplete="off" required${v(edit && edit.brand)} />
                   <span class="field__error" data-error-for="brand"></span>
                 </label>
                 <label class="field">
                   <span class="field__label">Perfume name</span>
-                  <input name="name" maxlength="80" placeholder="e.g. Aventus" autocomplete="off" required />
+                  <input name="name" maxlength="80" placeholder="e.g. Aventus" autocomplete="off" required${v(edit && edit.name)} />
                   <span class="field__error" data-error-for="name"></span>
                 </label>
               </div>
@@ -1643,23 +1671,24 @@
               <fieldset class="field">
                 <legend class="field__label">Scent family <span class="field__optional">(pick all that fit)</span></legend>
                 <div class="check-chips">
-                  ${families.map((f) => `<label class="check-chip"><input type="checkbox" name="tags" value="${f.key}" /><span>${f.name}</span></label>`).join("")}
+                  ${families.map((f) => `<label class="check-chip"><input type="checkbox" name="tags" value="${f.key}"${edit && edit.tags.includes(f.key) ? " checked" : ""} /><span>${f.name}</span></label>`).join("")}
                 </div>
               </fieldset>
 
               <label class="field">
-                <span class="field__label">Main notes <span class="field__optional">(optional, separate with commas)</span></span>
-                <input name="notes" maxlength="300" placeholder="e.g. Bergamot, Vanilla, Musk" autocomplete="off" />
+                <span class="field__label">Main notes <span class="field__optional">(exactly ${NOTES_REQUIRED}, separate with commas)</span></span>
+                <input name="notes" maxlength="300" placeholder="e.g. Bergamot, Vanilla, Musk" autocomplete="off" required${v(edit && edit.notes.join(", "))} />
+                <span class="field__error" data-error-for="notes"></span>
               </label>
               <div class="notes-preview" id="notesPreview" aria-live="polite">
-                ${notesCanvasHTML([], "Type notes above to preview them here.")}
+                ${notesCanvasHTML(edit ? edit.notes : [], "Type notes above to preview them here.")}
               </div>
 
               <div class="field">
-                <span class="field__label">Photo <span class="field__optional">(optional · any size, we'll resize it)</span></span>
+                <span class="field__label">Photo <span class="field__optional">${edit ? "(choose a new one to replace it · any size, we'll resize it)" : "(required · any size, we'll resize it)"}</span></span>
                 <div class="add__photo">
                   <div class="add__preview" id="photoPreview">
-                    ${perfumeMedia({ name: "", image: "", look: { shape: "rect", liquid: "#e3e6e4", cap: "#2b2f2d" } }, "sm")}
+                    ${perfumeMedia(edit || { name: "", image: "", look: { shape: "rect", liquid: "#e3e6e4", cap: "#2b2f2d" } }, "sm")}
                   </div>
                   <label class="btn btn--ghost btn--sm add__file">
                     <input type="file" id="photoInput" accept="image/*" />
@@ -1672,7 +1701,7 @@
 
               <div class="add__foot">
                 <span class="composer__error" id="addError" role="alert"></span>
-                <button type="submit" class="btn btn--primary" id="addSubmit">Add perfume</button>
+                <button type="submit" class="btn btn--primary" id="addSubmit">${edit ? "Save changes" : "Add perfume"}</button>
               </div>
             </form>
           </section>
@@ -1721,7 +1750,8 @@
       if (!name) return showDuplicate(null);
       const id = ++dupRequest;
       try {
-        const res = await api(`/perfumes/check?brand=${encodeURIComponent(brand)}&name=${encodeURIComponent(name)}`);
+        const except = form.dataset.editing ? `&except=${encodeURIComponent(form.dataset.editing)}` : "";
+        const res = await api(`/perfumes/check?brand=${encodeURIComponent(brand)}&name=${encodeURIComponent(name)}${except}`);
         if (id === dupRequest) showDuplicate(res.exists ? res.perfume : null);
       } catch (err) { /* the server check on submit still protects us */ }
     }, 350);
@@ -1744,25 +1774,27 @@
     const fields = {};
     if (!body.brand) fields.brand = "Please enter the brand.";
     if (!body.name) fields.name = "Please enter the perfume's name.";
+    const notesError = notesCountError(parseNotes(body.notes));
+    if (notesError) fields.notes = notesError;
     if (photoWork) await photoWork;   // wait until a chosen photo is ready
     const photoError = $('[data-error-for="photo"]').textContent;
+    const editing = form.dataset.editing ? byId(form.dataset.editing) : null;
     if (photoError) fields.photo = photoError;
+    else if (!addPhoto && !editing) fields.photo = "Please add a photo of the perfume.";
     setFieldErrors(form, fields);
     error.textContent = "";
     if (Object.keys(fields).length) return;
+    if (editing) return saveEditedPerfume(form, editing, body);
 
     submit.disabled = true;
     submit.textContent = "Adding…";
     try {
-      const { perfume } = await api("/perfumes", { method: "POST", body });
-      if (addPhoto) {
-        try {
-          const res = await api(`/perfumes/${encodeURIComponent(perfume.slug)}/image`, { method: "PUT", file: addPhoto });
-          perfume.image = res.image;
-        } catch (err) {
-          toast(`Perfume added, but the photo failed: ${err.message}`);
-        }
-      }
+      // the photo is the request body; the details travel in a header
+      const { perfume } = await api("/perfumes", {
+        method: "POST",
+        file: addPhoto,
+        headers: { "X-Perfume": encodeURIComponent(JSON.stringify(body)) },
+      });
       const p = buildPerfume(perfume);
       perfumes.push(p);
       if (profileData && session.user && profileData.user.username === session.user.username) profileData.added.unshift(p.id);
@@ -1784,6 +1816,79 @@
     }
   }
 
+  async function saveEditedPerfume(form, p, body) {
+    const submit = $("#addSubmit");
+    const error = $("#addError");
+    submit.disabled = true;
+    submit.textContent = "Saving…";
+    try {
+      let { perfume } = await api(`/perfumes/${encodeURIComponent(p.id)}`, { method: "PATCH", body });
+      if (addPhoto) {
+        try {
+          const res = await api(`/perfumes/${encodeURIComponent(p.id)}/image`, { method: "PUT", file: addPhoto });
+          perfume = { ...perfume, image: res.image };
+        } catch (err) {
+          toast(`Changes saved, but the photo failed: ${err.message}`);
+        }
+      }
+      addPhoto = null;
+      updatePerfume(perfume);
+      location.hash = `perfume/${encodeURIComponent(p.id)}`;
+      toast(`${perfume.name} was updated`);
+    } catch (err) {
+      if (err.status === 409 && err.data.existing) {
+        showDuplicate(err.data.existing);
+      } else {
+        setFieldErrors(form, err.data && err.data.fields);
+        error.textContent = err.message;
+      }
+      submit.textContent = "Save changes";
+      submit.disabled = !!(err.status === 409);
+    }
+  }
+
+  // A perfume's details changed (by you, or live from the owner)
+  function updatePerfume(json) {
+    const p = byId(json.slug);
+    if (!p) return;
+    Object.assign(p, { brand: json.brand, name: json.name, tags: json.tags || [], notes: json.notes || [], image: json.image || "" });
+    renderFilterBar();
+    renderTrending();
+    if (renderCurrent && currentPerfume() === p) refreshPage();
+    else if (renderCurrent === renderProfilePage) refreshPage();
+  }
+
+  async function deletePerfume(id) {
+    const p = byId(id);
+    if (!p) return;
+    // checked before the request: the live "perfume:deleted" event can remove it from the list first
+    const onItsPage = currentPerfume() === p;
+    try {
+      await api(`/perfumes/${encodeURIComponent(id)}`, { method: "DELETE" });
+      confirmingDelete = null;
+      removePerfume(id);
+      toast(`${p.name} was deleted`);
+      if (onItsPage) {
+        profileTab = "added";
+        location.hash = `profile/${encodeURIComponent(session.user.username)}`;
+      }
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  // A perfume is gone (deleted by you, or live by its owner)
+  function removePerfume(id) {
+    if (!byId(id)) return;
+    perfumes = perfumes.filter((x) => x.id !== id);
+    if (profileData) profileData.added = profileData.added.filter((x) => x !== id);
+    renderFilterBar();
+    renderTrending();
+    refreshCommunity();
+    if (renderCurrent === renderProfilePage) refreshPage();
+    else if (location.hash === `#perfume/${encodeURIComponent(id)}` || location.hash === `#perfume/${id}`) route();
+  }
+
   // Resize any photo (e.g. a big phone photo) to a web-friendly JPEG
   async function preparePhoto(file) {
     const bitmap = await createImageBitmap(file);
@@ -1802,9 +1907,11 @@
   }
 
   function showPhoto(file) {
+    const form = $("#addForm");
+    const editing = form && form.dataset.editing && byId(form.dataset.editing);
     $("#photoPreview").innerHTML = perfumeMedia({
-      name: "Preview", image: file ? URL.createObjectURL(file) : "",
-      look: { shape: "rect", liquid: "#e3e6e4", cap: "#2b2f2d" },
+      name: "Preview", image: file ? URL.createObjectURL(file) : (editing ? editing.image : ""),
+      look: editing ? editing.look : { shape: "rect", liquid: "#e3e6e4", cap: "#2b2f2d" },
     }, "sm");
     $("#photoRemove").hidden = !file;
     if (!file) $("#photoInput").value = "";
@@ -1946,8 +2053,8 @@
     session.following = new Set((data && data.following) || []);
   }
 
-  async function api(path, { method = "GET", body, file } = {}) {
-    const opts = { method, headers: {}, credentials: "same-origin" };
+  async function api(path, { method = "GET", body, file, headers = {} } = {}) {
+    const opts = { method, headers: { ...headers }, credentials: "same-origin" };
     if (file) {
       opts.headers["Content-Type"] = file.type;
       opts.body = file;
@@ -2302,7 +2409,7 @@
     view.hidden = false;
     $("main").hidden = true;
     document.documentElement.classList.remove("is-opening-view");
-    document.title = `${title} — LUMIERE`;
+    setTitle(`${title} — LUMIERE`);
     window.scrollTo({ top: 0, behavior: "instant" });
     paintNotesCanvases(view);
   }
@@ -2316,7 +2423,7 @@
     view.hidden = true;
     view.innerHTML = "";
     $("main").hidden = false;
-    document.title = "LUMIERE — Fragrance discovery & community";
+    setTitle("LUMIERE — Fragrance discovery & community");
     const target = location.hash.length > 1 && document.getElementById(location.hash.slice(1));
     if (target) target.scrollIntoView();
     else window.scrollTo({ top: returnScroll, behavior: "instant" });
@@ -2324,6 +2431,8 @@
 
   function showPerfume(p, token) {
     editingReview = null;
+    editingNotes = null;
+    confirmingDelete = null;
     renderCurrent = () => renderPerfumePage(p);
     showView(renderCurrent(), `${p.brand ? p.brand + " " : ""}${p.name}`);
     if (pendingSection === "reviews") $("#pvReviews").scrollIntoView({ behavior: "instant" });
@@ -2346,7 +2455,7 @@
       profileData = data;
       renderCurrent = renderProfilePage;
       refreshPage();
-      document.title = `${data.user.displayName} (@${data.user.username}) — LUMIERE`;
+      setTitle(`${data.user.displayName} (@${data.user.username}) — LUMIERE`);
     } catch (err) {
       if (token !== routeToken) return;
       $("#perfumeView").innerHTML = `
@@ -2381,10 +2490,32 @@
     showView(renderCreateGroupPage(), "Create a group");
   }
 
-  function showAllReviews() {
+  function showAllReviews(perfume = "") {
+    if (allReviews.perfume !== perfume) {   // switching between all reviews and one perfume's: start fresh
+      Object.assign(allReviews, { perfume, rating: "", items: [], total: 0, hasMore: false });
+    }
+    const p = perfume && byId(perfume);
     renderCurrent = renderAllReviewsPage;
-    showView(renderAllReviewsPage(), "All reviews");
+    showView(renderAllReviewsPage(), p ? `Reviews of ${p.name}` : "All reviews");
     loadAllReviews(true);
+  }
+
+  function showEditPerfume(slug) {
+    const p = byId(slug);
+    if (!session.user) {
+      history.replaceState(null, "", location.pathname + location.search);
+      showHome();
+      openAuth("login", "Log in to edit your perfume.");
+      return;
+    }
+    if (!p || !ownsPerfume(p)) {
+      toast("Only the member who added this perfume can edit it.");
+      location.replace(p ? `#perfume/${encodeURIComponent(slug)}` : "#");
+      return;
+    }
+    addPhoto = null;
+    renderCurrent = null;   // keep what the user typed; don't re-render
+    showView(renderAddPage(p), `Edit ${p.name}`);
   }
 
   function showAddPerfume() {
@@ -2411,6 +2542,8 @@
     if ((m = hash.match(/^#profile\/(.+)$/))) return showProfile(decodeURIComponent(m[1]), token);
     if (hash === "#add-perfume") return showAddPerfume();
     if (hash === "#all-reviews") return showAllReviews();
+    if ((m = hash.match(/^#all-reviews\/(.+)$/))) return showAllReviews(decodeURIComponent(m[1]));
+    if ((m = hash.match(/^#edit-perfume\/(.+)$/))) return showEditPerfume(decodeURIComponent(m[1]));
     if (hash === "#about") { renderCurrent = renderAboutPage; return showView(renderAboutPage(), "About"); }
     if (hash === "#privacy") { renderCurrent = renderPrivacyPage; return showView(renderPrivacyPage(), "Privacy"); }
     if (hash === "#help") { renderCurrent = null; return showView(renderHelpPage(), "Help center"); }   // keep what's typed
@@ -2558,6 +2691,23 @@
     });
 
     view.addEventListener("click", (e) => {
+      // edit the notes of a perfume you added
+      if (e.target.closest("[data-edit-notes]")) {
+        const p = currentPerfume();
+        if (!p) return;
+        editingNotes = p.id;
+        notesDraft = p.notes.join(", ");
+        refreshPage();
+        const input = $("#notesForm [name=notes]");
+        if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+        return;
+      }
+      if (e.target.closest("[data-cancel-notes]")) { editingNotes = null; refreshPage(); return; }
+      const delBtn = e.target.closest("[data-delete-perfume]");
+      if (delBtn) { confirmingDelete = delBtn.dataset.deletePerfume; refreshPage(); return; }
+      if (e.target.closest("[data-cancel-delete]")) { confirmingDelete = null; refreshPage(); return; }
+      const yesBtn = e.target.closest("[data-confirm-delete]");
+      if (yesBtn) { yesBtn.disabled = true; deletePerfume(yesBtn.dataset.confirmDelete); return; }
       if (e.target.closest("[data-back]")) {
         // Came from the site -> real Back; opened a shared link directly -> go home
         if (homeSeen) history.back();
@@ -2647,7 +2797,11 @@
       }
       if (e.target.matches("#postForm textarea, #postForm input")) $("#postError").textContent = "";
       if (e.target.matches("#addForm [name=notes]")) updateNotesPreview(e.target);
-      if (e.target.matches("#notesForm [name=notes]")) { updateNotesPreview(e.target, "notesFormPreview"); $("#notesError").textContent = ""; }
+      if (e.target.matches("#notesForm [name=notes]")) {
+        notesDraft = e.target.value;
+        updateNotesPreview(e.target, "notesFormPreview");
+        $("#notesError").textContent = "";
+      }
       if (e.target.matches("#addForm [name=brand], #addForm [name=name]")) {
         e.target.removeAttribute("aria-invalid");
         checkDuplicateSoon(e.target.form);
@@ -2979,7 +3133,7 @@
       const res = await api(`/groups/${encodeURIComponent(slug)}`);
       if (groupView !== v) return;
       v.group = res.group;
-      document.title = `${res.group.name} — LUMIERE`;
+      setTitle(`${res.group.name} — LUMIERE`);
       refreshPage();
       loadGroupPosts(true);
     } catch (err) {
@@ -3241,8 +3395,13 @@
   const messenger = {
     conversations: null,   // list (newest first)
     active: null,          // open conversation
-    messages: [],          // messages of the open conversation (oldest first)
-    hasMore: false,
+    opening: false,        // a chat is being opened that isn't known yet
+    threads: new Map(),    // conversation id -> { messages (oldest first), hasMore, loaded }, so chats reopen instantly
+    thread: { messages: [], hasMore: false, loaded: false },   // the open conversation's entry in `threads`
+    get messages() { return this.thread.messages; },
+    set messages(list) { this.thread.messages = list; },
+    get hasMore() { return this.thread.hasMore; },
+    set hasMore(value) { this.thread.hasMore = value; },
     loading: false,
     online: new Set(),     // usernames online right now
     typingUntil: 0,
@@ -3251,6 +3410,20 @@
   let socket = null;
   let typingTimer = 0;
   let lastTypingSent = 0;
+  let chatToken = 0;
+
+  function threadFor(conversationId) {
+    const key = String(conversationId);
+    if (!messenger.threads.has(key)) messenger.threads.set(key, { messages: [], hasMore: false, loaded: false });
+    return messenger.threads.get(key);
+  }
+
+  // add a live message to a thread (or replace my optimistic copy of it)
+  function addToThread(thread, message, clientId) {
+    const i = thread.messages.findIndex((m) => String(m.id) === String(message.id) || (clientId && m.clientId === clientId));
+    if (i >= 0) thread.messages[i] = message;
+    else thread.messages.push(message);
+  }
 
   const isMessengerOpen = () => renderCurrent === renderMessengerPage;
   const fmtTime = (iso) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
@@ -3266,12 +3439,16 @@
 
   function setUnread(count) {
     messenger.unread = Math.max(0, count);
-    $$('[data-messages-link] .badge').forEach((b) => {
+    $$("[data-messages-link] .badge, [data-unread-badge]").forEach((b) => {
       b.textContent = messenger.unread > 99 ? "99+" : String(messenger.unread);
       b.hidden = !messenger.unread;
     });
-    const base = document.title.replace(/^\(\d+\+?\) /, "");
-    document.title = messenger.unread ? `(${messenger.unread}) ${base}` : base;
+    setTitle(document.title.replace(/^\(\d+\+?\) /, ""));
+  }
+
+  // Page titles keep the unread count in front, e.g. "(2) Groups — LUMIERE"
+  function setTitle(text) {
+    document.title = messenger.unread ? `(${messenger.unread}) ${text}` : text;
   }
 
   /* ---------- Live connection ---------- */
@@ -3280,9 +3457,18 @@
     if (!session.user || !window.io) return;
     socket = window.io({ withCredentials: true });
 
+    let connectedBefore = false;
     socket.on("connect", () => {
       queryPresence();
       updateConnectionNote();
+      // back after a dropped connection: catch up on what was sent meanwhile (badge, list, open chat)
+      if (connectedBefore) {
+        loadConversations();
+        if (isMessengerOpen() && messenger.active) {
+          loadMessages(false).then(() => { if (document.visibilityState === "visible") markActiveRead(); });
+        }
+      }
+      connectedBefore = true;
     });
     socket.on("disconnect", updateConnectionNote);
     socket.on("connect_error", updateConnectionNote);
@@ -3293,16 +3479,19 @@
       const viewing = isMessengerOpen() && messenger.active && String(messenger.active.id) === String(conversation.id);
 
       if (viewing) {
-        // replace my optimistic copy, or add the new message
-        const i = messenger.messages.findIndex((m) => String(m.id) === String(message.id) || (clientId && m.clientId === clientId));
-        if (i >= 0) messenger.messages[i] = message;
-        else messenger.messages.push(message);
+        addToThread(messenger.thread, message, clientId);
         if (!mine) messenger.typingUntil = 0;
         renderThreadBody(true);
         renderThreadHeader();
         if (!mine && document.visibilityState === "visible") markActiveRead();
-      } else if (!mine) {
-        showChatPopup(conversation, message);
+      } else {
+        // keep a chat that was opened before up to date, so it reopens instantly
+        const thread = messenger.threads.get(String(conversation.id));
+        if (thread) addToThread(thread, message, clientId);
+        if (!mine) {
+          showChatPopup(conversation, message);
+          prefetchThread(conversation.id);   // the popup opens this chat: have its messages ready
+        }
       }
       if (typeof totalUnread === "number") setUnread(totalUnread);
       renderConversationList();
@@ -3325,12 +3514,15 @@
     socket.on("unread:changed", ({ count }) => setUnread(count));
     socket.on("reviews:changed", () => document.dispatchEvent(new CustomEvent("lumiere:reviews-changed")));
 
+    socket.on("perfume:changed", ({ perfume }) => updatePerfume(perfume));
+    socket.on("perfume:deleted", ({ slug }) => removePerfume(slug));
+
     socket.on("perfume:notes", ({ slug, notes, notesAddedBy }) => {
       const p = byId(slug);
       if (!p || JSON.stringify(p.notes) === JSON.stringify(notes)) return;
       const typing = $("#notesForm") && $("#notesForm [name=notes]").value.trim();
       applyNotes(p, notes, notesAddedBy);
-      if (typing) toast(`@${notesAddedBy} just added notes to ${p.name}`);
+      if (typing) toast(`The notes of ${p.name} were just updated`);
     });
 
     socket.on("presence", ({ username, online }) => {
@@ -3445,7 +3637,8 @@
     let html = messenger.hasMore
       ? `<div class="thread__older"><button class="link link--btn" data-older ${messenger.loading ? "disabled" : ""}>${messenger.loading ? "Loading…" : "Load earlier messages"}</button></div>`
       : "";
-    if (!msgs.length && !messenger.loading) {
+    // only once the messages have loaded (never while they're on their way)
+    if (!msgs.length && messenger.thread.loaded && !messenger.loading) {
       html += `<p class="thread__start">This is the start of your conversation with <strong>${escapeHTML(messenger.active.other.displayName)}</strong>. Say hi 👋</p>`;
     }
     msgs.forEach((m, i) => {
@@ -3490,6 +3683,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l16-8-6 16-2-7z"/></svg>
         </button>
       </form>`
+      : messenger.opening ? ""   // stays blank for the moment it takes to open the chat
       : `
       <div class="thread__empty">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/></svg>
@@ -3499,7 +3693,7 @@
 
     return `
       <div class="container pv messenger-page">
-        <div class="messenger${a ? " messenger--thread" : ""}">
+        <div class="messenger${a || messenger.opening ? " messenger--thread" : ""}">
           <aside class="messenger__list">
             <div class="messenger__head"><h1>Messages</h1></div>
             <form class="messenger__search" data-member-search>
@@ -3515,6 +3709,10 @@
 
   function mountMessenger() {
     $("#perfumeView").innerHTML = renderMessengerPage();
+    fillMessenger();
+  }
+
+  function fillMessenger() {
     renderConversationList();
     if (messenger.active) {
       renderThreadBody(true);
@@ -3531,47 +3729,96 @@
   }
 
   /* ---------- Opening a chat ---------- */
+  // Before the page is drawn: a chat we already know (from the list, a popup or an earlier visit)
+  // opens straight away with the messages we have; an unknown one opens blank until the server answers.
+  function prepareChat(username) {
+    const name = username.toLowerCase();
+    const known = (messenger.conversations || []).find((c) => c.other.username === name)
+      || (messenger.active && messenger.active.other.username === name ? messenger.active : null);
+    messenger.typingUntil = 0;
+    if (known) setActiveChat(known);
+    else { messenger.active = null; messenger.opening = true; }
+  }
+
+  function setActiveChat(conversation) {
+    messenger.active = { ...conversation };
+    messenger.thread = threadFor(conversation.id);
+    messenger.opening = false;
+  }
+
   async function openChat(username) {
+    const token = ++chatToken;
     try {
-      const { conversation } = await api("/conversations", { method: "POST", body: { username } });
-      if (!isMessengerOpen()) return;
-      if (conversation.online) messenger.online.add(conversation.other.username);
-      messenger.active = conversation;
-      messenger.messages = [];
-      messenger.hasMore = false;
-      messenger.typingUntil = 0;
-      mountMessenger();
-      document.title = `${conversation.other.displayName} — Messages — LUMIERE`;
-      await loadMessages(false);
+      let fresh = false;
+      if (!messenger.active) {   // not known yet: ask the server (this also starts a new conversation) + its messages
+        const res = await api("/conversations", { method: "POST", body: { username, withMessages: true } });
+        if (token !== chatToken || !isMessengerOpen()) return;
+        const { conversation } = res;
+        if (conversation.online) messenger.online.add(conversation.other.username);
+        setActiveChat(conversation);
+        if (Array.isArray(res.messages)) { storeMessages(messenger.thread, res, false); fresh = true; }
+        mountMessenger();
+      }
+      setTitle(`${messenger.active.other.displayName} — Messages — LUMIERE`);
       markActiveRead();
       const input = $("#chatForm textarea");
       if (input && window.matchMedia("(min-width: 681px)").matches) input.focus();
+      if (!fresh) await loadMessages(false);   // fresh copy from the server (the shown messages may be from earlier)
     } catch (err) {
+      if (token !== chatToken) return;
+      messenger.opening = false;
       toast(err.message);
       location.hash = "messages";
     }
   }
 
+  // Fetch a chat's messages; `older` loads the page before the first one shown
   async function loadMessages(older) {
     const a = messenger.active;
+    const thread = messenger.thread;
     if (!a) return;
     messenger.loading = true;
     if (older) renderThreadBody(false);
     try {
-      const q = older && messenger.messages.length ? `?before=${encodeURIComponent(messenger.messages[0].createdAt)}` : "";
+      const q = older && thread.messages.length ? `?before=${encodeURIComponent(thread.messages[0].createdAt)}` : "";
       const res = await api(`/conversations/${a.id}/messages${q}`);
-      if (messenger.active !== a) return;
+      storeMessages(thread, res, older);
+      if (messenger.thread !== thread) return;
+      messenger.loading = false;
       const box = $("#threadMessages");
       const prevHeight = box ? box.scrollHeight : 0;
-      messenger.messages = older ? [...res.messages, ...messenger.messages] : res.messages;
-      messenger.hasMore = res.hasMore;
-      messenger.loading = false;
       renderThreadBody(!older);
       if (older && box) box.scrollTop = box.scrollHeight - prevHeight;   // keep your place
     } catch (err) {
-      messenger.loading = false;
+      if (messenger.thread === thread) messenger.loading = false;
       toast(err.message);
     }
+  }
+
+  function storeMessages(thread, res, older) {
+    if (older) thread.messages = [...res.messages, ...thread.messages];
+    else {
+      // keep messages I'm still sending, and live ones that arrived while this request was on its way
+      const last = res.messages.length ? res.messages[res.messages.length - 1].createdAt : "";
+      const keep = thread.messages.filter((m) => !res.messages.some((x) => String(x.id) === String(m.id))
+        && (m.pending || m.failed || m.createdAt > last));
+      thread.messages = [...res.messages, ...keep];
+    }
+    if (!older || !thread.loaded) thread.hasMore = res.hasMore;
+    thread.loaded = true;
+  }
+
+  // Load a chat's messages in the background (when its popup appears, or you point at it in the list)
+  const prefetching = new Set();
+  function prefetchThread(conversationId) {
+    const thread = threadFor(conversationId);
+    const key = String(conversationId);
+    if (thread.loaded || prefetching.has(key)) return;
+    prefetching.add(key);
+    api(`/conversations/${key}/messages`)
+      .then((res) => { if (!thread.loaded) storeMessages(thread, res, false); })
+      .catch(() => { /* it loads when the chat opens */ })
+      .finally(() => prefetching.delete(key));
   }
 
   function sendChat(form) {
@@ -3662,11 +3909,14 @@
     const wasOpen = isMessengerOpen();
     renderCurrent = renderMessengerPage;
     if (!username) {
+      chatToken++;
       messenger.active = null;
+      messenger.opening = false;
       if (wasOpen) mountMessenger(); else showView(renderMessengerPage(), "Messages");
       renderConversationList();
     } else {
-      if (!wasOpen) { messenger.active = null; showView(renderMessengerPage(), "Messages"); renderConversationList(); }
+      prepareChat(username);   // the chat (and its known messages) is in the very first render
+      if (wasOpen) mountMessenger(); else { showView(renderMessengerPage(), "Messages"); fillMessenger(); }
       openChat(username);
     }
     if (!messenger.conversations || !wasOpen) loadConversations();
@@ -3681,6 +3931,9 @@
       disconnectSocket();
       messenger.conversations = null;
       messenger.active = null;
+      messenger.opening = false;
+      messenger.threads.clear();
+      messenger.thread = { messages: [], hasMore: false, loaded: false };
       messenger.online.clear();
       setUnread(0);
       if (isMessengerOpen()) location.hash = "";
@@ -3715,6 +3968,15 @@
 
     view.addEventListener("click", (e) => {
       if (e.target.closest("[data-older]")) loadMessages(true);
+    });
+
+    // pointing at a chat in the list starts loading it, so it opens instantly
+    view.addEventListener("pointerover", (e) => {
+      const link = e.target.closest("#convList a.conv");
+      if (!link) return;
+      const name = decodeURIComponent(link.hash.replace("#messages/", ""));
+      const c = (messenger.conversations || []).find((x) => x.other.username === name);
+      if (c) prefetchThread(c.id);
     });
 
     // reading a chat when you come back to the tab marks it read
