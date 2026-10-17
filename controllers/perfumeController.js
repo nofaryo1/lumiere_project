@@ -124,6 +124,7 @@ exports.create = async (req, res) => {
     addedBy: req.user._id,
   });
   await perfume.populate("addedBy", "username");
+  realtime.emitToAll("perfume:added", { perfume: perfumeJSON(perfume) });
   res.status(201).json({ perfume: perfumeJSON(perfume) });
 };
 

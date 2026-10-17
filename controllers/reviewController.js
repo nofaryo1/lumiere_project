@@ -1,9 +1,12 @@
 // Reviews: one perfume's reviews, writing / editing / deleting your own, all reviews, "helpful" votes
 const mongoose = require("mongoose");
 const Review = require("../models/Review");
+const User = require("../models/User");
 const {
-  text, limitParam, reviewJSON, statsFor, followingIds, requirePerfume, reviewsChanged,
+  text, limitParam, escapeRegex, reviewJSON, statsFor, followingIds, requirePerfume, reviewsChanged,
 } = require("../lib/helpers");
+
+const SINCE_DAYS = { week: 7, month: 30, year: 365 };   // ?since= on the All reviews page
 
 /* ---------- Reviews & likes ---------- */
 exports.forPerfume = async (req, res) => {
@@ -74,6 +77,14 @@ exports.list = async (req, res) => {
   }
   if (req.query.rating && /^[1-5]$/.test(req.query.rating)) filter.rating = Number(req.query.rating);
   if (req.query.perfume) filter.perfume = text(req.query.perfume, 200);   // one perfume's reviews
+  if (SINCE_DAYS[req.query.since]) filter.createdAt = { $gte: new Date(Date.now() - SINCE_DAYS[req.query.since] * 24 * 60 * 60 * 1000) };
+  // ?q= : words in the review, or the reviewer's name / @username
+  const q = text(req.query.q, 60).replace(/^@/, "");
+  if (q) {
+    const re = new RegExp(escapeRegex(q), "i");
+    const reviewers = await User.find({ $or: [{ username: re }, { displayName: re }] }).distinct("_id");
+    filter.$or = [{ text: re }, { user: { $in: reviewers } }];
+  }
   const [list, total] = await Promise.all([
     Review.find(filter).sort(sort).skip(offset).limit(limit).populate("user", "username displayName"),
     Review.countDocuments(filter),

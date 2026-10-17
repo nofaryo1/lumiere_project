@@ -14,7 +14,7 @@
   <script>
     /* Opening a page link directly (e.g. #perfume/...): keep the homepage hidden until main.js
        has drawn that page, so it doesn't flash first. */
-    if (/^#(?:(?:perfume|profile|group|messages|all-reviews|edit-perfume)\/.+|messages|groups|create-group|add-perfume|all-reviews|about|privacy|help)$/.test(location.hash)) {
+    if (/^#(?:(?:perfume|profile|group|messages|all-reviews|edit-perfume)\/.+|messages|groups|members|create-group|add-perfume|all-reviews|about|privacy|help)$/.test(location.hash)) {
       document.documentElement.classList.add("is-opening-view");
       setTimeout(function () { document.documentElement.classList.remove("is-opening-view"); }, 5000);   // never stay hidden
     }
@@ -161,6 +161,28 @@
           <!-- Rendered by main.js -->
         </div>
 
+        <!-- Refine by brand, notes and rating (combines with the scent family above and the search) -->
+        <div class="filter-fields" id="perfumeFilters" role="group" aria-label="Refine perfumes">
+          <label class="filter-field">
+            <span>Brand</span>
+            <select id="filterBrand"><option value="">All brands</option></select>
+          </label>
+          <div class="filter-field">
+            <label for="filterNotes">Notes</label>
+            <!-- suggestions open right under the field (main.js, jQuery) -->
+            <div class="filter-field__control">
+              <input id="filterNotes" type="search" placeholder="e.g. vanilla, oud" autocomplete="off"
+                     role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="notesSuggest" />
+              <div class="search-suggest notes-suggest" id="notesSuggest" role="listbox" aria-label="Notes" hidden></div>
+            </div>
+          </div>
+          <label class="filter-field">
+            <span>Rating</span>
+            <select id="filterRating"><option value="">Any rating</option></select>
+          </label>
+          <button type="button" class="link link--btn filter-fields__clear" id="clearPerfumeFilters" hidden>Clear filters</button>
+        </div>
+
         <div class="carousel" id="trendingGrid" tabindex="0" aria-label="Trending perfumes, scroll sideways for more">
           <!-- Rendered by main.js -->
         </div>
@@ -302,6 +324,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
+  <script src="/vendor/jquery/jquery.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script src="/vendor/d3/d3.min.js"></script>
   <script src="/js/trends-chart.js"></script>

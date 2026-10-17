@@ -6,6 +6,14 @@ const Like = require("../models/Like");
 const Follow = require("../models/Follow");
 const GroupMember = require("../models/GroupMember");
 const GroupPost = require("../models/GroupPost");
+const Group = require("../models/Group");
+const PerformanceVote = require("../models/PerformanceVote");
+const Conversation = require("../models/Conversation");
+const Message = require("../models/Message");
+const Session = require("../models/Session");
+const ContactRequest = require("../models/ContactRequest");
+const realtime = require("../lib/realtime");
+const { checkPassword, endSession } = require("../lib/auth");
 const { text, limitParam, escapeRegex, authorJSON, reviewJSON, followingIds } = require("../lib/helpers");
 
 /* ---------- Profiles ---------- */
@@ -40,6 +48,48 @@ exports.updateMe = async (req, res) => {
   req.user.bio = text(req.body.bio, 160);
   await req.user.save();
   res.json({ user: req.user.toPublic() });
+};
+
+// Delete your own account (confirmed with your password).
+// Your reviews, likes, votes, follows, group posts and messages go with it;
+// perfumes and groups you created stay on LUMIERE without an owner.
+exports.deleteMe = async (req, res) => {
+  const password = typeof req.body.password === "string" ? req.body.password : "";
+  if (!(await checkPassword(password, req.user.passwordHash))) {
+    return res.status(401).json({ error: "That password isn't right.", fields: { password: "Wrong password." } });
+  }
+  const me = req.user._id;
+  const [myPosts, conversations] = await Promise.all([
+    GroupPost.find({ user: me }, "parent"),
+    Conversation.find({ participants: me }).distinct("_id"),
+  ]);
+  const myTopPosts = myPosts.filter((p) => !p.parent).map((p) => p._id);
+  // replies on other people's posts: keep their reply counts right
+  for (const reply of myPosts.filter((p) => p.parent)) {
+    await GroupPost.updateOne({ _id: reply.parent }, { $inc: { repliesCount: -1 } }, { timestamps: false });
+  }
+  await Promise.all([
+    Review.deleteMany({ user: me }),
+    Like.deleteMany({ user: me }),
+    PerformanceVote.deleteMany({ user: me }),
+    Follow.deleteMany({ $or: [{ follower: me }, { following: me }] }),
+    GroupMember.deleteMany({ user: me }),
+    GroupPost.deleteMany({ $or: [{ user: me }, { parent: { $in: myTopPosts } }] }),
+    Review.updateMany({ likedBy: me }, { $pull: { likedBy: me }, $inc: { likesCount: -1 } }, { timestamps: false }),
+    GroupPost.updateMany({ likedBy: me }, { $pull: { likedBy: me }, $inc: { likesCount: -1 } }, { timestamps: false }),
+    Message.deleteMany({ conversation: { $in: conversations } }),
+    Conversation.deleteMany({ _id: { $in: conversations } }),
+    Perfume.updateMany({ addedBy: me }, { $set: { addedBy: null } }),
+    Perfume.updateMany({ notesAddedBy: me }, { $set: { notesAddedBy: null } }),
+    Group.updateMany({ createdBy: me }, { $set: { createdBy: null } }),
+    ContactRequest.updateMany({ user: me }, { $set: { user: null } }),
+  ]);
+  await endSession(req, res);
+  await Session.deleteMany({ user: me });   // signed out everywhere
+  await req.user.deleteOne();
+  realtime.disconnectUser(me);
+  realtime.emitToAll("reviews:changed", {});
+  res.json({ ok: true });
 };
 
 /* ---------- Following ---------- */
@@ -89,6 +139,24 @@ exports.following = (req, res) => followList(req, res, "following");
 
 /* ---------- Members: search + top reviewers ---------- */
 // Search every member (registered and demo) by name or @username; closest matches first
+// Every member, A–Z, a page at a time (?search= narrows it by name or @username)
+exports.directory = async (req, res) => {
+  const limit = limitParam(req.query.limit, 30, 60);
+  const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+  const q = text(req.query.search, 40).replace(/^@/, "");
+  const re = q ? new RegExp(escapeRegex(q), "i") : null;
+  const filter = re ? { $or: [{ username: re }, { displayName: re }] } : {};
+  const [list, total] = await Promise.all([
+    User.find(filter, "username displayName bio").sort({ displayName: 1, _id: 1 }).skip(offset).limit(limit),
+    User.countDocuments(filter),
+  ]);
+  res.json({
+    users: list.map((u) => ({ username: u.username, displayName: u.displayName, bio: u.bio })),
+    total,
+    hasMore: offset + list.length < total,
+  });
+};
+
 exports.search = async (req, res) => {
   const q = text(req.query.search, 40).replace(/^@/, "");
   if (!q) return res.json({ users: [] });

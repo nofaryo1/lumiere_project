@@ -9,6 +9,7 @@ app.use(express.static(path.join(__dirname, "public")));
 app.use("/vendor/d3", express.static(path.join(__dirname, "node_modules", "d3", "dist")));
 app.use("/vendor/react", express.static(path.join(__dirname, "node_modules", "react", "umd")));
 app.use("/vendor/react-dom", express.static(path.join(__dirname, "node_modules", "react-dom", "umd")));
+app.use("/vendor/jquery", express.static(path.join(__dirname, "node_modules", "jquery", "dist")));
 app.use("/api", require("./routes/api"));
 require("./lib/startup");   // loads the built-in catalog once MongoDB is connected
 

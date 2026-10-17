@@ -167,11 +167,9 @@
   }
 
   function toast(message) {
-    const el = $("#toast");
-    el.textContent = message;
-    el.hidden = false;
+    const $toast = jQuery("#toast").text(message).prop("hidden", false);
     clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => { el.hidden = true; }, 2400);
+    toast.timer = setTimeout(() => { $toast.prop("hidden", true); }, 2400);
   }
 
   /* =======================================================
@@ -316,7 +314,7 @@
   /* =======================================================
      Trending: period tabs + family filter + search query
      ======================================================= */
-  const state = { period: "week", family: "all", query: "" };
+  const state = { period: "week", family: "all", query: "", brand: "", notes: "", rating: 0 };   // rating: exact stars (1–5)
 
   const PERIOD_LABEL = {
     week: "Most liked and reviewed this week",
@@ -335,10 +333,51 @@
 
   function renderFilterBar() {
     const all = { key: "all", name: "All" };
-    $("#filterBar").innerHTML = [all, ...families].map((f) => {
+    const used = families.filter((f) => state.family === f.key || perfumes.some((p) => p.tags.includes(f.key)));
+    $("#filterBar").innerHTML = [all, ...used].map((f) => {
       const count = f.key === "all" ? perfumes.length : perfumes.filter((p) => p.tags.includes(f.key)).length;
       return `<button class="tag" data-family="${f.key}" aria-pressed="${state.family === f.key}">${f.name}<span class="tag__count">${count}</span></button>`;
     }).join("");
+    renderPerfumeFilters();
+  }
+
+  /* ---------- Brand / notes / rating filters (combine with the family chips and the search) ---------- */
+  const brandKey = (brand) => String(brand || "").trim().replace(/\s+/g, " ").toLowerCase();
+  const filterNoteTerms = () => state.notes.toLowerCase().split(",").map((t) => t.trim()).filter(Boolean);
+  const hasPerfumeFilters = () => !!(state.brand || filterNoteTerms().length || state.rating);
+  // a perfume's rating in whole stars (average rounded to the nearest star; 0 = not rated yet)
+  const starsOf = (p) => { const r = ratingFor(p); return r.count ? Math.min(5, Math.max(1, Math.round(r.avg))) : 0; };
+
+  let noteNames = [];   // every note on LUMIERE right now (for the Notes suggestions)
+
+  function renderPerfumeFilters() {
+    const $brand = jQuery("#filterBrand");
+    if (!$brand.length) return;
+    const brands = new Map();
+    perfumes.forEach((p) => { const k = brandKey(p.brand); if (k && !brands.has(k)) brands.set(k, p.brand.trim().replace(/\s+/g, " ")); });
+    if (state.brand && !brands.has(state.brand)) state.brand = "";
+    $brand.empty().append(
+      jQuery("<option>", { value: "", text: "All brands" }),
+      [...brands].sort((a, b) => a[1].localeCompare(b[1]))
+        .map(([k, name]) => jQuery("<option>", { value: k, text: name, selected: k === state.brand })),
+    );
+    const notes = new Map();
+    perfumes.forEach((p) => p.notes.forEach((n) => { if (!notes.has(n.toLowerCase())) notes.set(n.toLowerCase(), n); }));
+    noteNames = [...notes.values()].sort((a, b) => a.localeCompare(b));
+    // exact star ratings
+    jQuery("#filterRating").empty().append(
+      jQuery("<option>", { value: "", text: "Any rating" }),
+      [5, 4, 3, 2, 1].map((n) => jQuery("<option>", { value: n, text: `${n}★`, selected: state.rating === n })),
+    );
+    jQuery("#clearPerfumeFilters").prop("hidden", !hasPerfumeFilters() && state.family === "all");
+  }
+
+  function matchesPerfumeFilters(p) {
+    if (state.brand && brandKey(p.brand) !== state.brand) return false;
+    const terms = filterNoteTerms();
+    if (terms.length && !terms.every((t) => p.notes.some((n) => n.toLowerCase().includes(t)))) return false;
+    if (state.rating && starsOf(p) !== state.rating) return false;
+    return true;
   }
 
   function renderTrending() {
@@ -349,11 +388,15 @@
     const ranks = new Map(list.map((p, i) => [p.id, i + 1]));
 
     if (state.family !== "all") list = list.filter((p) => p.tags.includes(state.family));
+    list = list.filter(matchesPerfumeFilters);
 
     if (state.query) {
       list = list.filter((p) => matchesQuery(p, state.query));
       title.textContent = "Search results";
       sub.innerHTML = `${list.length} result${list.length === 1 ? "" : "s"} for “${escapeHTML(state.query)}” · <button class="link link--btn" id="clearSearch">Clear search</button>`;
+    } else if (hasPerfumeFilters()) {
+      title.textContent = "Trending perfumes";
+      sub.textContent = `${list.length} perfume${list.length === 1 ? " matches" : "s match"} your filters`;
     } else {
       title.textContent = "Trending perfumes";
       sub.textContent = PERIOD_LABEL[state.period];
@@ -364,6 +407,29 @@
       .map((p) => perfumeCard(p, { rank: state.query ? null : ranks.get(p.id) })).join("");
     track.scrollTo({ left: 0, behavior: "instant" });
     $("#trendingEmpty").hidden = list.length > 0;
+    updateCarousel();
+  }
+
+  // Add perfumes this page doesn't know yet (added by another member after it loaded).
+  // Signed-in members get them live; this covers guests and lists that mention a new perfume.
+  let perfumeSync = null;
+  function syncNewPerfumes() {
+    if (perfumeSync) return perfumeSync;
+    perfumeSync = api("/perfumes")
+      .then((res) => {
+        const fresh = res.perfumes.filter((rec) => !byId(rec.slug));
+        fresh.forEach((rec) => perfumes.push(buildPerfume(rec, res.stats[rec.slug])));
+        if (fresh.length) { renderFilterBar(); renderTrendingKeepScroll(); }
+      })
+      .catch(() => { /* try again next time */ })
+      .finally(() => { perfumeSync = null; });
+    return perfumeSync;
+  }
+
+  function renderTrendingKeepScroll() {
+    const left = $("#trendingGrid").scrollLeft;
+    renderTrending();
+    $("#trendingGrid").scrollTo({ left, behavior: "instant" });
     updateCarousel();
   }
 
@@ -419,32 +485,112 @@
     renderFilterBar();
     renderTrending();
 
-    const track = $("#trendingGrid");
-    track.addEventListener("scroll", updateCarousel, { passive: true });
-    window.addEventListener("resize", updateCarousel);
-    $("#trendPrev").addEventListener("click", () => scrollCarousel(-1));
-    $("#trendNext").addEventListener("click", () => scrollCarousel(1));
-    track.addEventListener("keydown", (e) => {
+    // carousel (jQuery)
+    const $track = jQuery("#trendingGrid");
+    $track.on("scroll", updateCarousel);
+    jQuery(window).on("resize", updateCarousel);
+    jQuery("#trendPrev").on("click", () => scrollCarousel(-1));
+    jQuery("#trendNext").on("click", () => scrollCarousel(1));
+    $track.on("keydown", (e) => {
       if (e.key === "ArrowRight") { e.preventDefault(); scrollCarousel(1); }
       if (e.key === "ArrowLeft")  { e.preventDefault(); scrollCarousel(-1); }
     });
 
-    $("#trendTabs").addEventListener("click", (e) => {
-      const tab = e.target.closest("[data-period]");
-      if (!tab) return;
-      $$("#trendTabs [role=tab]").forEach((t) => t.setAttribute("aria-selected", String(t === tab)));
-      state.period = tab.dataset.period;
+    // This week / This month / All time
+    jQuery("#trendTabs").on("click", "[data-period]", function () {
+      jQuery("#trendTabs [role=tab]").attr("aria-selected", "false");
+      jQuery(this).attr("aria-selected", "true");
+      state.period = jQuery(this).attr("data-period");
       renderTrending();
     });
 
-    $("#filterBar").addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-family]");
-      if (btn) setFamily(btn.dataset.family);
+    // scent family chips
+    jQuery("#filterBar").on("click", "[data-family]", function () { setFamily(jQuery(this).attr("data-family")); });
+
+    // brand / notes / rating
+    const $clear = jQuery("#clearPerfumeFilters");
+    const refine = () => { renderTrending(); $clear.prop("hidden", !hasPerfumeFilters() && state.family === "all"); };
+    jQuery("#filterBrand").on("change", function () { state.brand = jQuery(this).val(); refine(); });
+    jQuery("#filterRating").on("change", function () { state.rating = Number(jQuery(this).val()) || 0; refine(); });
+    initNotesSuggest(refine);
+    $clear.on("click", () => {
+      Object.assign(state, { brand: "", notes: "", rating: 0, family: "all" });
+      jQuery("#filterBrand, #filterNotes, #filterRating").val("");
+      renderFilterBar();
+      renderTrending();
     });
 
-    $("#trending").addEventListener("click", (e) => {
-      if (e.target.id === "clearSearch") runSearch("");
+    jQuery("#trending").on("click", "#clearSearch", () => runSearch(""));
+
+    // guests have no live connection: pick up newly added perfumes when they come back to the tab
+    jQuery(document).on("visibilitychange", () => {
+      if (document.visibilityState === "visible" && !session.user && perfumes.length) syncNewPerfumes();
     });
+  }
+
+  /* ---------- Notes filter: suggestions in a list right under the field (jQuery) ---------- */
+  function initNotesSuggest(onChange) {
+    const $input = jQuery("#filterNotes");
+    const $box = jQuery("#notesSuggest");
+    let active = -1;
+    let timer = 0;
+
+    const terms = () => $input.val().split(",");
+    const close = () => {
+      active = -1;
+      $box.prop("hidden", true).empty();
+      $input.attr("aria-expanded", "false").removeAttr("aria-activedescendant");
+    };
+    const highlight = (index) => {
+      const $items = $box.children("[data-note]");
+      if (!$items.length) return;
+      active = (index + $items.length) % $items.length;
+      $items.removeClass("is-active").attr("aria-selected", "false");
+      const $item = $items.eq(active).addClass("is-active").attr("aria-selected", "true");
+      $input.attr("aria-activedescendant", $item.attr("id"));
+      $item[0].scrollIntoView({ block: "nearest" });
+    };
+    const open = () => {
+      const parts = terms();
+      const term = parts[parts.length - 1].trim().toLowerCase();
+      const chosen = new Set(parts.slice(0, -1).map((t) => t.trim().toLowerCase()));
+      const matches = noteNames
+        .filter((n) => !chosen.has(n.toLowerCase()) && (!term || n.toLowerCase().includes(term)))
+        .sort((a, b) => Number(b.toLowerCase().startsWith(term)) - Number(a.toLowerCase().startsWith(term)))
+        .slice(0, 8);
+      if (!matches.length) { close(); return; }
+      active = -1;
+      $box.empty().append(matches.map((n, i) => jQuery("<button>", {
+        type: "button", class: "suggest-item", role: "option", id: `noteOption${i}`, "data-note": n, "aria-selected": "false",
+      }).append(jQuery("<span>", { class: "suggest-item__name", text: n }))));
+      $box.prop("hidden", false);
+      $input.attr("aria-expanded", "true");
+    };
+    const apply = () => { state.notes = $input.val(); onChange(); };
+    const choose = (note) => {
+      const parts = terms();
+      parts[parts.length - 1] = note;
+      $input.val(parts.map((t) => t.trim()).filter(Boolean).join(", "));
+      close();
+      apply();
+    };
+
+    $input.on("focus", open);
+    $input.on("input", () => {
+      open();
+      clearTimeout(timer);
+      timer = setTimeout(apply, 150);
+    });
+    $input.on("keydown", (e) => {
+      if ($box.prop("hidden")) { if (e.key === "ArrowDown") { open(); highlight(0); e.preventDefault(); } return; }
+      if (e.key === "ArrowDown") { e.preventDefault(); highlight(active + 1); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); highlight(active - 1); }
+      else if (e.key === "Enter" && active >= 0) { e.preventDefault(); choose($box.children("[data-note]").eq(active).attr("data-note")); }
+      else if (e.key === "Escape") { close(); }
+    });
+    $input.on("blur", () => setTimeout(close, 120));
+    // mousedown (not click) so the field doesn't lose focus first
+    $box.on("mousedown", "[data-note]", function (e) { e.preventDefault(); choose(jQuery(this).attr("data-note")); });
   }
 
   /* =======================================================
@@ -1196,6 +1342,8 @@
   function applyNotes(p, notes, addedBy) {
     p.notes = notes;
     p.notesAddedBy = addedBy || null;
+    renderPerfumeFilters();
+    if (filterNoteTerms().length) renderTrendingKeepScroll();
     $$(`.perfume-card[data-perfume="${p.id}"] .perfume-card__notes`).forEach((el) => {
       el.innerHTML = notes.map((n) => `<span class="chip">${escapeHTML(n)}</span>`).join("");
     });
@@ -1390,6 +1538,7 @@
   let profileData = null;
   let profileTab = "liked";
   let editingProfile = false;
+  let deletingAccount = false;   // the "Delete your account?" box is open
   let profileList = null;   // { kind: "followers"|"following", users, total } for the open tab
 
   function profileReview(rv) {
@@ -1505,6 +1654,24 @@
         </div>
       </form>`;
 
+    const deleteBox = deletingAccount ? `
+      <div class="account-delete" role="group" aria-label="Delete your account">
+        <div>
+          <strong>Delete your account?</strong>
+          <p>This permanently removes your profile, reviews, likes, follows, group posts and messages. Perfumes and groups you created stay on LUMIERE.</p>
+        </div>
+        <label class="field">
+          <span class="field__label">Enter your password to confirm</span>
+          <input type="password" id="deleteAccountPassword" autocomplete="current-password" />
+          <span class="field__error" id="deleteAccountError"></span>
+        </label>
+        <div class="profile-edit__actions">
+          <button type="button" class="btn btn--ghost btn--sm" data-cancel-delete-account>Cancel</button>
+          <button type="button" class="btn btn--danger btn--sm" data-confirm-delete-account>Delete my account</button>
+        </div>
+      </div>`
+      : '<p class="profile-edit__danger"><button type="button" class="link link--btn is-danger" data-delete-account>Delete account</button></p>';
+
     const stat = (key, n, label) =>
       `<button class="profile-stat" data-profile-tab="${key}"><strong>${formatCount(n)}</strong><span>${label}</span></button>`;
 
@@ -1518,7 +1685,7 @@
         <section class="profile-head">
           ${avatar(authorFromUser(user), "avatar--xl")}
           <div class="profile-head__info">
-            ${isMe && editingProfile ? editForm : `
+            ${isMe && editingProfile ? editForm + deleteBox : `
               <h1 class="profile-head__name">${escapeHTML(user.displayName)}</h1>
               <p class="profile-head__meta">@${escapeHTML(user.username)} · Joined ${joined}</p>
               ${user.bio ? `<p class="profile-head__bio">${escapeHTML(user.bio)}</p>` : ""}`}
@@ -1553,7 +1720,7 @@
   /* =======================================================
      All reviews  (#all-reviews)
      ======================================================= */
-  const allReviews = { sort: "popular", scope: "all", rating: "", perfume: "", items: [], total: 0, hasMore: false, loading: false };   // perfume: slug, or "" for all
+  const allReviews = { sort: "popular", scope: "all", rating: "", since: "", q: "", perfume: "", items: [], total: 0, hasMore: false, loading: false };   // perfume: slug, or "" for all
 
   function renderAllReviewsPage() {
     const a = allReviews;
@@ -1599,6 +1766,21 @@
           </div>
         </div>
 
+        <div class="filter-fields" role="group" aria-label="Search reviews">
+          <label class="filter-field">
+            <span>Date</span>
+            <select id="reviewsSince">
+              ${[["", "Any time"], ["week", "Past week"], ["month", "Past month"], ["year", "Past year"]]
+                .map(([v, label]) => `<option value="${v}"${a.since === v ? " selected" : ""}>${label}</option>`).join("")}
+            </select>
+          </label>
+          <label class="filter-field filter-field--wide">
+            <span>Reviewer or keyword</span>
+            <input id="reviewsQuery" type="search" value="${escapeHTML(a.q)}" placeholder="e.g. @alice or long lasting" autocomplete="off" />
+          </label>
+          ${a.rating || a.since || a.q ? '<button type="button" class="link link--btn filter-fields__clear" data-clear-review-filters>Clear filters</button>' : ""}
+        </div>
+
         <div class="${a.loading && a.items.length ? "is-loading" : ""}">${body}</div>
 
         ${a.hasMore ? `<div class="all-reviews__more"><button class="btn btn--ghost" data-load-more ${a.loading ? "disabled" : ""}>${a.loading ? "Loading…" : "Load more reviews"}</button></div>` : ""}
@@ -1608,16 +1790,28 @@
   let allReviewsRequest = 0;
 
   // Changing a filter keeps the current list on screen (dimmed) until the new one arrives
+  // re-render without losing your place in the "Reviewer or keyword" box
+  function refreshReviewsPage() {
+    const input = document.activeElement && document.activeElement.id === "reviewsQuery" ? document.activeElement : null;
+    const caret = input ? [input.selectionStart, input.selectionEnd] : null;
+    refreshPage();
+    const again = input && $("#reviewsQuery");
+    if (again) { again.focus(); again.setSelectionRange(caret[0], caret[1]); }
+  }
+
   async function loadAllReviews(reset) {
     const a = allReviews;
     const id = ++allReviewsRequest;
     a.loading = true;
-    refreshPage();
+    refreshReviewsPage();
     try {
       const q = new URLSearchParams({ sort: a.sort, scope: a.scope, limit: "10", offset: String(reset ? 0 : a.items.length) });
       if (a.rating) q.set("rating", a.rating);
       if (a.perfume) q.set("perfume", a.perfume);
+      if (a.since) q.set("since", a.since);
+      if (a.q) q.set("q", a.q);
       const res = await api(`/reviews?${q}`);
+      if (res.reviews.some((r) => !byId(r.perfume))) await syncNewPerfumes();   // a review of a perfume added after this page loaded
       if (renderCurrent !== renderAllReviewsPage || id !== allReviewsRequest) return;
       a.items = reset ? res.reviews : [...a.items, ...res.reviews];
       a.total = res.total;
@@ -1626,7 +1820,7 @@
       toast(err.message);
     }
     a.loading = false;
-    refreshPage();
+    refreshReviewsPage();
   }
 
   /* =======================================================
@@ -1795,8 +1989,9 @@
         file: addPhoto,
         headers: { "X-Perfume": encodeURIComponent(JSON.stringify(body)) },
       });
-      const p = buildPerfume(perfume);
-      perfumes.push(p);
+      // the live "perfume:added" event may have added it already
+      const p = byId(perfume.slug) || buildPerfume(perfume);
+      if (!perfumes.includes(p)) perfumes.push(p);
       if (profileData && session.user && profileData.user.username === session.user.username) profileData.added.unshift(p.id);
       renderFilterBar();
       renderTrending();
@@ -2020,23 +2215,24 @@
   }
 
   async function submitContact(form) {
-    const body = { name: form.name.value.trim(), email: form.email.value.trim(), message: form.message.value.trim() };
+    const $form = jQuery(form);
+    const value = (name) => String($form.find(`[name=${name}]`).val() || "").trim();
+    const body = { name: value("name"), email: value("email"), message: value("message") };
     const fields = {};
     if (!body.name) fields.name = "Please enter your name.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) fields.email = "Please enter a valid email.";
     setFieldErrors(form, fields);
-    $("#contactError").textContent = "";
+    const $error = jQuery("#contactError").text("");
     if (Object.keys(fields).length) return;
-    const button = $("button[type=submit]", form);
-    button.disabled = true;
+    const $button = $form.find("button[type=submit]").prop("disabled", true);
     try {
       await api("/contact", { method: "POST", body });
-      form.hidden = true;
-      $("#contactDone").hidden = false;
+      $form.prop("hidden", true);
+      jQuery("#contactDone").prop("hidden", false);
     } catch (err) {
       setFieldErrors(form, err.data && err.data.fields);
-      $("#contactError").textContent = err.message;
-      button.disabled = false;
+      $error.text(err.message);
+      $button.prop("disabled", false);
     }
   }
 
@@ -2053,24 +2249,29 @@
     session.following = new Set((data && data.following) || []);
   }
 
-  async function api(path, { method = "GET", body, file, headers = {} } = {}) {
-    const opts = { method, headers: { ...headers }, credentials: "same-origin" };
+  // Every request to our Express API goes through jQuery AJAX ($.ajax).
+  // Resolves with the JSON body; rejects with an Error carrying { status, data } (status 0 = server unreachable).
+  const parseJSON = (text) => { try { return JSON.parse(text); } catch (err) { return {}; } };
+
+  function api(path, { method = "GET", body, file, headers = {} } = {}) {
+    const settings = { url: `/api${path}`, method, headers: { ...headers }, dataType: "text" };
     if (file) {
-      opts.headers["Content-Type"] = file.type;
-      opts.body = file;
+      Object.assign(settings, { data: file, processData: false, contentType: file.type });   // raw photo upload
     } else if (body !== undefined) {
-      opts.headers["Content-Type"] = "application/json";
-      opts.body = JSON.stringify(body);
+      Object.assign(settings, { data: JSON.stringify(body), contentType: "application/json" });
     }
-    let res;
-    try {
-      res = await fetch(`/api${path}`, opts);
-    } catch (err) {
-      throw Object.assign(new Error("Can't connect to the LUMIERE server. Make sure it's running (npm start) and try again."), { status: 0, data: {} });
-    }
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw Object.assign(new Error(data.error || "Something went wrong."), { status: res.status, data });
-    return data;
+    return new Promise((resolve, reject) => {
+      jQuery.ajax(settings)
+        .done((text) => resolve(parseJSON(text)))
+        .fail((xhr) => {
+          if (!xhr.status) {
+            reject(Object.assign(new Error("Can't connect to the LUMIERE server. Make sure it's running (npm start) and try again."), { status: 0, data: {} }));
+            return;
+          }
+          const data = parseJSON(xhr.responseText);
+          reject(Object.assign(new Error(data.error || "Something went wrong."), { status: xhr.status, data }));
+        });
+    });
   }
 
   const CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
@@ -2239,6 +2440,63 @@
     } catch (err) {
       setFieldErrors(form, err.data && err.data.fields);
       $("#authError").textContent = err.message;
+      button.disabled = false;
+    }
+  }
+
+  /* ---------- Page controls handled with jQuery event delegation on the page view ----------
+     All reviews (sort, whose, stars, date, reviewer/keyword, load more, clear),
+     Members (search, load more), profile editing / delete account, Help center form */
+  function initPageControls() {
+    const $view = jQuery("#perfumeView");
+
+    // All reviews
+    $view.on("click", "[data-reviews-sort]", function () { allReviews.sort = jQuery(this).attr("data-reviews-sort"); loadAllReviews(true); });
+    $view.on("click", "[data-reviews-scope]", function () { allReviews.scope = jQuery(this).attr("data-reviews-scope"); loadAllReviews(true); });
+    $view.on("click", "[data-reviews-rating]", function () { allReviews.rating = jQuery(this).attr("data-reviews-rating"); loadAllReviews(true); });
+    $view.on("click", "[data-load-more]", () => loadAllReviews(false));
+    $view.on("click", "[data-clear-review-filters]", () => { Object.assign(allReviews, { rating: "", since: "", q: "" }); loadAllReviews(true); });
+    $view.on("change", "#reviewsSince", function () { allReviews.since = jQuery(this).val(); loadAllReviews(true); });
+    let reviewsQueryTimer = 0;
+    $view.on("input", "#reviewsQuery", () => {
+      clearTimeout(reviewsQueryTimer);
+      reviewsQueryTimer = setTimeout(() => { allReviews.q = String(jQuery("#reviewsQuery").val() || "").trim(); loadAllReviews(true); }, 300);
+    });
+
+    // Members
+    $view.on("click", "[data-members-more]", () => loadMembers(false));
+    let membersQueryTimer = 0;
+    $view.on("input", "#membersQuery", () => {
+      clearTimeout(membersQueryTimer);
+      membersQueryTimer = setTimeout(() => { membersDir.q = String(jQuery("#membersQuery").val() || "").trim(); loadMembers(true); }, 300);
+    });
+
+    // Profile: edit, delete account
+    $view.on("click", "[data-edit-profile]", () => { editingProfile = true; refreshPage(); jQuery("#profileForm input").first().trigger("focus"); });
+    $view.on("click", "[data-cancel-profile]", () => { editingProfile = false; deletingAccount = false; refreshPage(); });
+    $view.on("click", "[data-delete-account]", () => { deletingAccount = true; refreshPage(); jQuery("#deleteAccountPassword").trigger("focus"); });
+    $view.on("click", "[data-cancel-delete-account]", () => { deletingAccount = false; refreshPage(); });
+    $view.on("click", "[data-confirm-delete-account]", function () { deleteAccount(this); });
+
+    // Help center
+    $view.on("submit", "#contactForm", function (e) { e.preventDefault(); submitContact(this); });
+  }
+
+  async function deleteAccount(button) {
+    const password = jQuery("#deleteAccountPassword").val();
+    const error = jQuery("#deleteAccountError")[0];
+    if (!password) { error.textContent = "Please enter your password."; return; }
+    button.disabled = true;
+    try {
+      await api("/users/me", { method: "DELETE", body: { password } });
+      deletingAccount = false;
+      editingProfile = false;
+      setSession(null);
+      onAuthChange();
+      location.hash = "";
+      toast("Your account was deleted");
+    } catch (err) {
+      error.textContent = err.message;
       button.disabled = false;
     }
   }
@@ -2492,12 +2750,79 @@
 
   function showAllReviews(perfume = "") {
     if (allReviews.perfume !== perfume) {   // switching between all reviews and one perfume's: start fresh
-      Object.assign(allReviews, { perfume, rating: "", items: [], total: 0, hasMore: false });
+      Object.assign(allReviews, { perfume, rating: "", since: "", q: "", items: [], total: 0, hasMore: false });
     }
     const p = perfume && byId(perfume);
     renderCurrent = renderAllReviewsPage;
     showView(renderAllReviewsPage(), p ? `Reviews of ${p.name}` : "All reviews");
     loadAllReviews(true);
+  }
+
+  /* ---------- Members  (#members): everyone on LUMIERE, A–Z, with search ---------- */
+  const membersDir = { q: "", users: [], total: 0, hasMore: false, loading: false };
+  let membersRequest = 0;
+
+  function renderMembersPage() {
+    const m = membersDir;
+    let body;
+    if (m.loading && !m.users.length) body = '<p class="pv__empty">Loading members…</p>';
+    else if (!m.users.length) body = `<p class="pv__empty">No members match “${escapeHTML(m.q)}”.</p>`;
+    else body = `<ul class="member-list">${m.users.map(memberRow).join("")}</ul>`;
+    return `
+      <div class="container pv members-page">
+        <nav class="pv__crumbs" aria-label="Breadcrumb">
+          ${BACK_BUTTON}
+          <span>Community / <strong>Members</strong></span>
+        </nav>
+        <div class="section-head">
+          <div>
+            <h1 class="section-title section-title--page">Members</h1>
+            <p class="section-sub">${m.loading && !m.users.length ? "&nbsp;" : `${m.total.toLocaleString("en-US")} member${m.total === 1 ? "" : "s"}${m.q ? ` matching “${escapeHTML(m.q)}”` : ""}`}</p>
+          </div>
+        </div>
+        <div class="filter-fields" role="search">
+          <label class="filter-field filter-field--wide">
+            <span>Search members</span>
+            <input id="membersQuery" type="search" value="${escapeHTML(m.q)}" placeholder="Name or @username" autocomplete="off" />
+          </label>
+        </div>
+        <div class="${m.loading && m.users.length ? "is-loading" : ""}">${body}</div>
+        ${m.hasMore ? `<div class="all-reviews__more"><button class="btn btn--ghost" data-members-more ${m.loading ? "disabled" : ""}>${m.loading ? "Loading…" : "Load more members"}</button></div>` : ""}
+      </div>`;
+  }
+
+  function refreshMembersPage() {
+    const input = document.activeElement && document.activeElement.id === "membersQuery" ? document.activeElement : null;
+    const caret = input ? [input.selectionStart, input.selectionEnd] : null;
+    refreshPage();
+    const again = input && $("#membersQuery");
+    if (again) { again.focus(); again.setSelectionRange(caret[0], caret[1]); }
+  }
+
+  async function loadMembers(reset) {
+    const m = membersDir;
+    const id = ++membersRequest;
+    m.loading = true;
+    refreshMembersPage();
+    try {
+      const q = new URLSearchParams({ limit: "30", offset: String(reset ? 0 : m.users.length) });
+      if (m.q) q.set("search", m.q);
+      const res = await api(`/members/all?${q}`);
+      if (renderCurrent !== renderMembersPage || id !== membersRequest) return;
+      m.users = reset ? res.users : [...m.users, ...res.users];
+      m.total = res.total;
+      m.hasMore = res.hasMore;
+    } catch (err) {
+      toast(err.message);
+    }
+    m.loading = false;
+    refreshMembersPage();
+  }
+
+  function showMembers() {
+    renderCurrent = renderMembersPage;
+    showView(renderMembersPage(), "Members");
+    loadMembers(true);
   }
 
   function showEditPerfume(slug) {
@@ -2548,6 +2873,7 @@
     if (hash === "#privacy") { renderCurrent = renderPrivacyPage; return showView(renderPrivacyPage(), "Privacy"); }
     if (hash === "#help") { renderCurrent = null; return showView(renderHelpPage(), "Help center"); }   // keep what's typed
     if (hash === "#groups") return showGroups();
+    if (hash === "#members") return showMembers();
     if (hash === "#messages") return showMessenger();
     if ((m = hash.match(/^#messages\/(.+)$/))) return showMessenger(decodeURIComponent(m[1]));
     if (hash === "#create-group") return showCreateGroup();
@@ -2567,6 +2893,8 @@
   // Keep card ratings in sync after you post or delete a review
   function refreshCardRatings(p) {
     $$(`.perfume-card[data-perfume="${p.id}"] .rating`).forEach((el) => { el.outerHTML = ratingRow(p); });
+    renderPerfumeFilters();
+    if (state.rating) renderTrendingKeepScroll();
   }
 
   // Toggle a when-to-wear pick ("wear") or an agree vote on a pro/con ("agree")
@@ -2737,16 +3065,7 @@
       const postDelete = e.target.closest("[data-post-delete]");
       if (postDelete) { deletePost(postDelete.dataset.postDelete, postDelete.dataset.parent || null); return; }
 
-      // ----- All reviews page -----
-      const sortBtn = e.target.closest("[data-reviews-sort]");
-      if (sortBtn) { allReviews.sort = sortBtn.dataset.reviewsSort; loadAllReviews(true); return; }
-      const scopeBtn = e.target.closest("[data-reviews-scope]");
-      if (scopeBtn) { allReviews.scope = scopeBtn.dataset.reviewsScope; loadAllReviews(true); return; }
-      const ratingBtn = e.target.closest("[data-reviews-rating]");
-      if (ratingBtn) { allReviews.rating = ratingBtn.dataset.reviewsRating; loadAllReviews(true); return; }
-      if (e.target.closest("[data-load-more]")) { loadAllReviews(false); return; }
-      if (e.target.closest("[data-edit-profile]")) { editingProfile = true; refreshPage(); $("#profileForm input").focus(); return; }
-      if (e.target.closest("[data-cancel-profile]")) { editingProfile = false; refreshPage(); return; }
+      // (All reviews, Members, profile editing and the contact form: see initPageControls, jQuery)
 
       // ----- Add a perfume -----
       if (e.target.closest("#photoRemove")) { choosePhoto(null); return; }
@@ -2812,13 +3131,14 @@
       if (e.target.id === "photoInput") choosePhoto(e.target.files[0] || null);
     });
 
+    initPageControls();
+
     view.addEventListener("submit", async (e) => {
       e.preventDefault();
       const form = e.target;
       if (form.id === "reviewForm") return saveReview(currentPerfume(), form);
       if (form.id === "addForm") return submitAddForm(form);
       if (form.id === "notesForm") return submitNotes(form);
-      if (form.id === "contactForm") return submitContact(form);
       if (form.id === "postForm") return submitPost(form);
       if (form.id === "createGroupForm") return submitCreateGroup(form);
       if (form.dataset.replyForm) return submitReply(form);
@@ -2915,7 +3235,10 @@
             <h1 class="section-title section-title--page">Discussion groups</h1>
             <p class="section-sub">Join groups about the scents you love and talk with people who get it.</p>
           </div>
-          ${session.user ? '<a class="btn btn--primary" href="#create-group">Create a group</a>' : '<button class="btn btn--primary" data-auth="signup" data-reason="Join the community to join groups and start discussions.">Join to take part</button>'}
+          <div class="section-head__actions">
+            <a class="btn btn--ghost" href="#members">Browse members</a>
+            ${session.user ? '<a class="btn btn--primary" href="#create-group">Create a group</a>' : '<button class="btn btn--primary" data-auth="signup" data-reason="Join the community to join groups and start discussions.">Join to take part</button>'}
+          </div>
         </div>
         ${session.user ? `
           <div class="segmented groups-filter" role="tablist" aria-label="Which groups">
@@ -3515,6 +3838,12 @@
     socket.on("reviews:changed", () => document.dispatchEvent(new CustomEvent("lumiere:reviews-changed")));
 
     socket.on("perfume:changed", ({ perfume }) => updatePerfume(perfume));
+    socket.on("perfume:added", ({ perfume }) => {
+      if (byId(perfume.slug)) return;   // e.g. the one I just added myself
+      perfumes.push(buildPerfume(perfume));
+      renderFilterBar();
+      renderTrendingKeepScroll();
+    });
     socket.on("perfume:deleted", ({ slug }) => removePerfume(slug));
 
     socket.on("perfume:notes", ({ slug, notes, notesAddedBy }) => {
