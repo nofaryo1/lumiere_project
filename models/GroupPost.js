@@ -11,6 +11,7 @@ const groupPostSchema = new mongoose.Schema(
     likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     likesCount: { type: Number, default: 0 },
     repliesCount: { type: Number, default: 0 },
+    editedAt: { type: Date, default: null },                  // set when the author edits it
   },
   { timestamps: true }
 );

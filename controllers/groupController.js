@@ -1,11 +1,15 @@
-// Discussion groups: list, create, membership, posts, replies and post likes
+// Discussion groups: list, create, edit / delete (creator), membership, posts (search, edit / delete your own),
+// replies and post likes
 const mongoose = require("mongoose");
+const User = require("../models/User");
 const Group = require("../models/Group");
 const GroupMember = require("../models/GroupMember");
 const GroupPost = require("../models/GroupPost");
 const Perfume = require("../models/Perfume");
 const { slugify, normalize } = require("../lib/perfumeKey");
-const { FAMILIES, text, limitParam, authorJSON } = require("../lib/helpers");
+const { FAMILIES, text, limitParam, escapeRegex, authorJSON } = require("../lib/helpers");
+
+const SINCE_DAYS = { week: 7, month: 30, year: 365 };   // ?since= when searching posts
 
 /* ---------- Groups ---------- */
 async function findGroup(req, res) {
@@ -64,6 +68,7 @@ function postJSON(p, me) {
     likedByMe: !!(me && (p.likedBy || []).some((id) => id.equals(me._id))),
     replies: p.repliesCount || 0,
     createdAt: p.createdAt,
+    edited: !!p.editedAt,
   };
 }
 
@@ -82,7 +87,8 @@ exports.list = async (req, res) => {
 
 // Live duplicate check for "Create a group"
 exports.check = async (req, res) => {
-  const g = await Group.findOne({ nameKey: normalize(text(req.query.name, 60)) });
+  const except = text(req.query.except, 200);
+  const g = await Group.findOne({ nameKey: normalize(text(req.query.name, 60)), ...(except ? { slug: { $ne: except } } : {}) });
   res.json({ exists: !!g, group: g ? { slug: g.slug, name: g.name } : null });
 };
 
@@ -131,6 +137,47 @@ exports.show = async (req, res) => {
   });
 };
 
+// Only the member who created a group can change it (built-in groups have no creator)
+async function ownGroup(req, res) {
+  const group = await findGroup(req, res);
+  if (!group) return null;
+  if (!group.createdBy || !group.createdBy.equals(req.user._id)) {
+    res.status(403).json({ error: "Only the member who created this group can change it." });
+    return null;
+  }
+  return group;
+}
+
+exports.update = async (req, res) => {
+  const group = await ownGroup(req, res);
+  if (!group) return;
+  const name = text(req.body.name, 60);
+  const description = text(req.body.description, 240);
+  const family = FAMILIES.includes(req.body.family) ? req.body.family : null;
+  const fields = {};
+  if (name.length < 3) fields.name = "Please give the group a name (3+ characters).";
+  if (description.length < 10) fields.description = "Tell people what the group is about (10+ characters).";
+  if (Object.keys(fields).length) return res.status(400).json({ error: "Please fix the highlighted fields.", fields });
+  const existing = await Group.findOne({ nameKey: normalize(name), _id: { $ne: group._id } });
+  if (existing) {
+    return res.status(409).json({ error: "A group with this name already exists.", existing: { slug: existing.slug, name: existing.name } });
+  }
+  Object.assign(group, { name, nameKey: normalize(name), description, family });   // the address (slug) stays the same
+  await group.save();
+  await group.populate("createdBy", "username displayName");
+  const [stats, isMember] = await Promise.all([groupStats(), isMemberOf(group, req.user)]);
+  res.json({ group: groupJSON(group, stats[group._id], { isMember: !!isMember }) });
+};
+
+// Delete a group you created, with its members list and all its posts
+exports.remove = async (req, res) => {
+  const group = await ownGroup(req, res);
+  if (!group) return;
+  await Promise.all([GroupMember.deleteMany({ group: group._id }), GroupPost.deleteMany({ group: group._id })]);
+  await group.deleteOne();
+  res.json({ ok: true });
+};
+
 exports.join = async (req, res) => {
   const group = await findGroup(req, res);
   if (!group) return;
@@ -166,6 +213,14 @@ exports.posts = async (req, res) => {
   const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
   const sort = req.query.sort === "top" ? { likesCount: -1, createdAt: -1 } : { createdAt: -1 };
   const filter = { group: group._id, parent: null };
+  if (SINCE_DAYS[req.query.since]) filter.createdAt = { $gte: new Date(Date.now() - SINCE_DAYS[req.query.since] * 24 * 60 * 60 * 1000) };
+  // ?q= : words in the post, or the author's name / @username
+  const q = text(req.query.q, 60).replace(/^@/, "");
+  if (q) {
+    const re = new RegExp(escapeRegex(q), "i");
+    const authors = await User.find({ $or: [{ username: re }, { displayName: re }] }).distinct("_id");
+    filter.$or = [{ text: re }, { user: { $in: authors } }];
+  }
   const [list, total] = await Promise.all([
     GroupPost.find(filter).sort(sort).skip(offset).limit(limit).populate("user", "username displayName"),
     GroupPost.countDocuments(filter),
@@ -198,6 +253,21 @@ exports.createPost = async (req, res) => {
   if (parent) await GroupPost.updateOne({ _id: parent._id }, { $inc: { repliesCount: 1 } }, { timestamps: false });
   await post.populate("user", "username displayName");
   res.status(201).json({ post: postJSON(post, req.user) });
+};
+
+// Edit one of your own posts or replies
+exports.updatePost = async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Post not found." });
+  const post = await GroupPost.findById(req.params.id);
+  if (!post) return res.status(404).json({ error: "Post not found." });
+  if (!post.user.equals(req.user._id)) return res.status(403).json({ error: "You can only edit your own posts." });
+  const body = text(req.body.text, 2000);
+  if (body.length < 2) return res.status(400).json({ error: "Please write something first." });
+  post.text = body;
+  post.editedAt = new Date();
+  await post.save();
+  await post.populate("user", "username displayName");
+  res.json({ post: postJSON(post, req.user) });
 };
 
 exports.deletePost = async (req, res) => {

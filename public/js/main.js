@@ -1134,11 +1134,9 @@
   }
 
   /* ---------- Notes canvas ----------
-     A <canvas> with one labeled circle per note. Notes come from the
-     perfume's data (API) — catalog and member-added perfumes alike —
-     and from the "Main notes" field in the Add a perfume form. */
-  const NOTE_FILLS = ["#e6efe9", "#e4ecf3", "#f3ece4", "#efe9f3", "#e9eef0", "#f1ebe3", "#f7e9ec", "#eef0ef"];
-  const NOTE_INKS = ["#3f6b56", "#3d6283", "#83613d", "#6a4f83", "#4b5f66", "#7a5a37", "#9a4a5c", "#4b5f66"];
+     One labeled circle per note, drawn by the React component in
+     public/js/react/notes-canvas.js. Here we only leave a placeholder
+     with the notes; paintNotesCanvases() lets React render into it. */
   const MAX_NOTES = 8;   // same limit as the API
 
   // "Bergamot, vanilla ,, Musk" -> ["Bergamot", "vanilla", "Musk"]
@@ -1146,162 +1144,12 @@
 
   function notesCanvasHTML(notes, emptyText = "No notes added yet.") {
     if (!notes.length) return `<p class="pv__hint notes-canvas__empty">${emptyText}</p>`;
-    const label = `${notes.length} note${notes.length === 1 ? "" : "s"}: ${notes.join(", ")}`;
-    return `
-      <canvas class="notes-canvas${notes.length > 4 ? " notes-canvas--tall" : ""}" data-notes="${escapeHTML(JSON.stringify(notes))}"
-              role="img" aria-label="${escapeHTML(label)}">${escapeHTML(label)}</canvas>`;
+    return `<div class="notes-canvas-root" data-notes="${escapeHTML(JSON.stringify(notes))}"></div>`;
   }
 
-  // Split a note name into at most 2 lines that fit `maxWidth`
-  function fitLabel(ctx, text, maxWidth, maxSize) {
-    for (let size = maxSize; size >= 9; size--) {
-      ctx.font = `600 ${size}px ${getComputedStyle(document.body).fontFamily}`;
-      if (ctx.measureText(text).width <= maxWidth) return { size, lines: [text] };
-      const words = text.split(/\s+/);
-      if (words.length > 1) {
-        let best = null;
-        for (let i = 1; i < words.length; i++) {
-          const lines = [words.slice(0, i).join(" "), words.slice(i).join(" ")];
-          const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
-          if (w <= maxWidth && (!best || w < best.w)) best = { lines, w };
-        }
-        if (best) return { size, lines: best.lines };
-      }
-    }
-    // still too long: shorten with an ellipsis
-    let t = text;
-    while (t.length > 3 && ctx.measureText(`${t}…`).width > maxWidth) t = t.slice(0, -1);
-    return { size: 9, lines: [`${t}…`] };
-  }
-
-  function drawNotesCanvas(canvas, progress = 1) {
-    let notes;
-    try { notes = JSON.parse(canvas.dataset.notes || "[]"); } catch (err) { notes = []; }
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
-    if (!width || !height) return;
-    const dpr = window.devicePixelRatio || 1;
-    if (canvas.width !== Math.round(width * dpr)) canvas.width = Math.round(width * dpr);
-    if (canvas.height !== Math.round(height * dpr)) canvas.height = Math.round(height * dpr);
-    const ctx = canvas.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-
-    const n = notes.length;
-    const rows = n > 4 ? 2 : 1;
-    const perRow = Math.ceil(n / rows);
-    const cellW = width / perRow;
-    const cellH = height / rows;
-    const radius = Math.max(18, Math.min(cellW, cellH) / 2 - 8);
-    const ease = 1 - Math.pow(1 - progress, 3);
-    const hover = canvas._hover || { scale: [] };
-    canvas._progress = progress;
-    const circles = [];
-
-    notes.forEach((note, i) => {
-      const row = Math.floor(i / perRow);
-      const inRow = row === rows - 1 ? n - perRow * (rows - 1) : perRow;   // center a shorter last row
-      const col = i - row * perRow;
-      const cx = (width - inRow * cellW) / 2 + cellW * (col + 0.5);
-      const cy = cellH * (row + 0.5);
-      const r = radius * (0.6 + 0.4 * ease);
-      const grow = hover.scale[i] || 1;            // hover: up to ~1.08
-      const lift = (grow - 1) * 40;                // …and floats up a few pixels
-      circles.push({ cx, cy, r: radius });
-
-      ctx.save();
-      ctx.translate(cx, cy - lift);
-      ctx.scale(grow, grow);
-      ctx.globalAlpha = ease;
-      ctx.beginPath();
-      ctx.arc(0, 0, r, 0, Math.PI * 2);
-      ctx.fillStyle = NOTE_FILLS[i % NOTE_FILLS.length];
-      ctx.fill();
-      ctx.lineWidth = 1.5 / grow;
-      ctx.strokeStyle = NOTE_INKS[i % NOTE_INKS.length];
-      ctx.globalAlpha = ease * (0.35 + (grow - 1) * 4);   // outline gets a little stronger on hover
-      ctx.stroke();
-
-      ctx.globalAlpha = ease;
-      const { size, lines } = fitLabel(ctx, note, r * 1.6, Math.min(15, Math.round(radius / 2.6)));
-      ctx.fillStyle = NOTE_INKS[i % NOTE_INKS.length];
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const lineH = size * 1.2;
-      lines.forEach((line, k) => ctx.fillText(line, 0, (k - (lines.length - 1) / 2) * lineH));
-      ctx.restore();
-    });
-    canvas._circles = circles;
-    ctx.globalAlpha = 1;
-  }
-
-  /* ---------- Hover: the circle under the pointer grows and lifts with a soft spring ---------- */
-  function hoverIndex(canvas, event) {
-    const rect = canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
-    return (canvas._circles || []).findIndex((c) => Math.hypot(x - c.cx, y - c.cy) <= c.r);
-  }
-
-  function animateHover(canvas) {
-    const st = canvas._hover;
-    if (st.raf) return;
-    const tick = () => {
-      let moving = false;
-      st.scale = st.scale.map((s, i) => {
-        const target = i === st.index ? 1.08 : 1;
-        st.velocity[i] = (st.velocity[i] || 0) * 0.62 + (target - s) * 0.22;   // spring: a tiny bounce
-        const next = s + st.velocity[i];
-        const settled = Math.abs(target - next) < 0.0008 && Math.abs(st.velocity[i]) < 0.0008;
-        if (settled) { st.velocity[i] = 0; return target; }
-        moving = true;
-        return next;
-      });
-      if ((canvas._progress || 1) === 1) drawNotesCanvas(canvas);
-      st.raf = moving && canvas.isConnected ? requestAnimationFrame(tick) : 0;
-    };
-    st.raf = requestAnimationFrame(tick);
-  }
-
-  function enableNotesHover(canvas) {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    let count = 0;
-    try { count = JSON.parse(canvas.dataset.notes || "[]").length; } catch (err) { count = 0; }
-    canvas._hover = { index: -1, scale: new Array(count).fill(1), velocity: new Array(count).fill(0), raf: 0 };
-    canvas.addEventListener("pointermove", (e) => {
-      const i = hoverIndex(canvas, e);
-      if (i !== canvas._hover.index) { canvas._hover.index = i; animateHover(canvas); }
-    });
-    canvas.addEventListener("pointerleave", () => { canvas._hover.index = -1; animateHover(canvas); });
-  }
-
-  // Draw every notes canvas inside `scope`, with a short grow-in
-  const watchedCanvases = new WeakSet();
-  const canvasResizer = "ResizeObserver" in window
-    ? new ResizeObserver((entries) => entries.forEach((e) => drawNotesCanvas(e.target)))
-    : null;
-
-  const animatedNotes = new Set();   // animate each perfume's notes only the first time
-
+  // Render (React) every notes canvas placeholder inside `scope`
   function paintNotesCanvases(scope = document) {
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    $$("canvas.notes-canvas", scope).forEach((canvas) => {
-      if (!watchedCanvases.has(canvas)) {
-        watchedCanvases.add(canvas);
-        if (canvasResizer) canvasResizer.observe(canvas);
-        enableNotesHover(canvas);
-      }
-      const key = `${location.hash}|${canvas.dataset.notes}`;
-      if (reduced || animatedNotes.has(key)) { drawNotesCanvas(canvas); return; }
-      animatedNotes.add(key);
-      const start = performance.now();
-      const step = (now) => {
-        const t = Math.min(1, (now - start) / 380);
-        drawNotesCanvas(canvas, t);
-        if (t < 1 && canvas.isConnected) requestAnimationFrame(step);
-      };
-      requestAnimationFrame(step);
-    });
+    if (window.LumiereNotesCanvas) window.LumiereNotesCanvas.mountAll(scope);
   }
 
   /* ---------- Notes panel: only the member who added the perfume can edit its notes ---------- */
@@ -1778,7 +1626,7 @@
             <span>Reviewer or keyword</span>
             <input id="reviewsQuery" type="search" value="${escapeHTML(a.q)}" placeholder="e.g. @alice or long lasting" autocomplete="off" />
           </label>
-          ${a.rating || a.since || a.q ? '<button type="button" class="link link--btn filter-fields__clear" data-clear-review-filters>Clear filters</button>' : ""}
+          ${a.rating || a.since || a.q.trim() ? '<button type="button" class="link link--btn filter-fields__clear" data-clear-review-filters>Clear filters</button>' : ""}
         </div>
 
         <div class="${a.loading && a.items.length ? "is-loading" : ""}">${body}</div>
@@ -1809,7 +1657,7 @@
       if (a.rating) q.set("rating", a.rating);
       if (a.perfume) q.set("perfume", a.perfume);
       if (a.since) q.set("since", a.since);
-      if (a.q) q.set("q", a.q);
+      if (a.q.trim()) q.set("q", a.q.trim());
       const res = await api(`/reviews?${q}`);
       if (res.reviews.some((r) => !byId(r.perfume))) await syncNewPerfumes();   // a review of a perfume added after this page loaded
       if (renderCurrent !== renderAllReviewsPage || id !== allReviewsRequest) return;
@@ -2199,6 +2047,7 @@
       <p class="info-card__eyebrow">Privacy &amp; terms</p>
       <h1 class="info-card__title">Using LUMIERE</h1>
       <p class="info-card__lead">By using LUMIERE, you agree to these simple rules. We keep them short on purpose.</p>
+      <div class="info-columns">
       <section class="info-section">
         <h2>Be respectful</h2>
         <p>Use the platform kindly and honestly. Don't harass other members, post spam or misuse any features.</p>
@@ -2211,6 +2060,7 @@
         <h2>What other members can see</h2>
         <p>Reviews, ratings, group posts, replies and your public profile are visible to other members. Private messages are only visible to you and the person you're chatting with.</p>
       </section>
+      </div>
       <p class="info-card__note">Questions? Contact us at <a class="link" href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a> or visit the <a class="link" href="#help">Help center</a>.</p>`);
   }
 
@@ -2458,17 +2308,19 @@
     $view.on("click", "[data-clear-review-filters]", () => { Object.assign(allReviews, { rating: "", since: "", q: "" }); loadAllReviews(true); });
     $view.on("change", "#reviewsSince", function () { allReviews.since = jQuery(this).val(); loadAllReviews(true); });
     let reviewsQueryTimer = 0;
-    $view.on("input", "#reviewsQuery", () => {
+    $view.on("input", "#reviewsQuery", function () {
+      allReviews.q = String(jQuery(this).val() || "");   // saved right away, so another filter can't undo it
       clearTimeout(reviewsQueryTimer);
-      reviewsQueryTimer = setTimeout(() => { allReviews.q = String(jQuery("#reviewsQuery").val() || "").trim(); loadAllReviews(true); }, 300);
+      reviewsQueryTimer = setTimeout(() => loadAllReviews(true), 300);
     });
 
     // Members
     $view.on("click", "[data-members-more]", () => loadMembers(false));
     let membersQueryTimer = 0;
-    $view.on("input", "#membersQuery", () => {
+    $view.on("input", "#membersQuery", function () {
+      membersDir.q = String(jQuery(this).val() || "");
       clearTimeout(membersQueryTimer);
-      membersQueryTimer = setTimeout(() => { membersDir.q = String(jQuery("#membersQuery").val() || "").trim(); loadMembers(true); }, 300);
+      membersQueryTimer = setTimeout(() => loadMembers(true), 300);
     });
 
     // Profile: edit, delete account
@@ -2480,6 +2332,51 @@
 
     // Help center
     $view.on("submit", "#contactForm", function (e) { e.preventDefault(); submitContact(this); });
+
+    // Groups page: search by name / topic and scent family
+    let groupsQueryTimer = 0;
+    $view.on("input", "#groupsQuery", function () {
+      groups.q = String(jQuery(this).val() || "");
+      clearTimeout(groupsQueryTimer);
+      groupsQueryTimer = setTimeout(refreshKeepingFocus, 150);
+    });
+    $view.on("change", "#groupsFamily", function () { groups.family = jQuery(this).val(); refreshKeepingFocus(); });
+
+    // Group page: the creator edits / deletes the group
+    $view.on("click", "[data-delete-group]", () => { groupView.confirmDelete = true; refreshPage(); });
+    $view.on("click", "[data-cancel-group-delete]", () => { groupView.confirmDelete = false; refreshPage(); });
+    $view.on("click", "[data-confirm-group-delete]", function () { deleteGroup(this); });
+
+    // Group page: search posts (words or @member, date)
+    let postsQueryTimer = 0;
+    $view.on("input", "#postsQuery", function () {
+      groupView.q = String(jQuery(this).val() || "");
+      clearTimeout(postsQueryTimer);
+      postsQueryTimer = setTimeout(() => loadGroupPosts(true), 300);
+    });
+    $view.on("change", "#postsSince", function () { groupView.since = jQuery(this).val(); loadGroupPosts(true); });
+
+    // Group page: edit your own post or reply
+    $view.on("click", "[data-post-edit]", function () {
+      groupView.editing = String(jQuery(this).attr("data-post-edit"));
+      refreshPage();
+      const $text = jQuery(`[data-post-edit-form="${groupView.editing}"] textarea`);
+      $text.trigger("focus");
+      if ($text.length) $text[0].setSelectionRange($text.val().length, $text.val().length);
+    });
+    $view.on("click", "[data-cancel-post-edit]", () => { groupView.editing = null; refreshPage(); });
+    $view.on("submit", "[data-post-edit-form]", function (e) { e.preventDefault(); saveEditedPost(this); });
+  }
+
+  // Re-render the open page without losing your place in one of its search boxes
+  const SEARCH_BOX_IDS = ["reviewsQuery", "membersQuery", "groupsQuery", "postsQuery"];
+  function refreshKeepingFocus() {
+    const active = document.activeElement;
+    const input = active && SEARCH_BOX_IDS.includes(active.id) ? active : null;
+    const caret = input ? [input.selectionStart, input.selectionEnd] : null;
+    refreshPage();
+    const again = input && document.getElementById(input.id);
+    if (again) { again.focus(); again.setSelectionRange(caret[0], caret[1]); }
   }
 
   async function deleteAccount(button) {
@@ -2731,7 +2628,7 @@
   }
 
   function showGroup(slug) {
-    groupView = { slug, group: null, posts: [], total: 0, hasMore: false, sort: "new", loading: false, replies: {} };
+    groupView = { slug, group: null, posts: [], total: 0, hasMore: false, sort: "new", loading: false, replies: {}, q: "", since: "", editing: null, confirmDelete: false };
     renderCurrent = renderGroupPage;
     showView(renderGroupPage(), "Group");
     loadGroup(slug);
@@ -2766,7 +2663,7 @@
     const m = membersDir;
     let body;
     if (m.loading && !m.users.length) body = '<p class="pv__empty">Loading members…</p>';
-    else if (!m.users.length) body = `<p class="pv__empty">No members match “${escapeHTML(m.q)}”.</p>`;
+    else if (!m.users.length) body = `<p class="pv__empty">No members match “${escapeHTML(m.q.trim())}”.</p>`;
     else body = `<ul class="member-list">${m.users.map(memberRow).join("")}</ul>`;
     return `
       <div class="container pv members-page">
@@ -2777,7 +2674,7 @@
         <div class="section-head">
           <div>
             <h1 class="section-title section-title--page">Members</h1>
-            <p class="section-sub">${m.loading && !m.users.length ? "&nbsp;" : `${m.total.toLocaleString("en-US")} member${m.total === 1 ? "" : "s"}${m.q ? ` matching “${escapeHTML(m.q)}”` : ""}`}</p>
+            <p class="section-sub">${m.loading && !m.users.length ? "&nbsp;" : `${m.total.toLocaleString("en-US")} member${m.total === 1 ? "" : "s"}${m.q.trim() ? ` matching “${escapeHTML(m.q.trim())}”` : ""}`}</p>
           </div>
         </div>
         <div class="filter-fields" role="search">
@@ -2806,7 +2703,7 @@
     refreshMembersPage();
     try {
       const q = new URLSearchParams({ limit: "30", offset: String(reset ? 0 : m.users.length) });
-      if (m.q) q.set("search", m.q);
+      if (m.q.trim()) q.set("search", m.q.trim());
       const res = await api(`/members/all?${q}`);
       if (renderCurrent !== renderMembersPage || id !== membersRequest) return;
       m.users = reset ? res.users : [...m.users, ...res.users];
@@ -2877,6 +2774,7 @@
     if (hash === "#messages") return showMessenger();
     if ((m = hash.match(/^#messages\/(.+)$/))) return showMessenger(decodeURIComponent(m[1]));
     if (hash === "#create-group") return showCreateGroup();
+    if ((m = hash.match(/^#edit-group\/(.+)$/))) return showEditGroup(decodeURIComponent(m[1]));
     if ((m = hash.match(/^#group\/(.+)$/))) return showGroup(decodeURIComponent(m[1]));
     showHome();
   }
@@ -3173,7 +3071,7 @@
     woody: ["#f1ebe3", "#7a5a37"], floral: ["#f7e9ec", "#9a4a5c"], fresh: ["#e5f1ef", "#2f6f68"], amber: ["#f6ecdc", "#8a5a1c"],
     citrus: ["#f7f1d9", "#7a6512"], musk: ["#eef0ef", "#4b5f66"], spicy: ["#f6e6df", "#93492c"], gourmand: ["#f1e7e1", "#6e4330"],
   };
-  const groups = { list: null, filter: "all" };
+  const groups = { list: null, filter: "all", q: "", family: "" };   // q / family: search on the Groups page
   let groupView = null;   // the open group page: { slug, group, posts, total, hasMore, sort, loading, replies: {} }
 
   const groupTone = (g) => GROUP_TONES[g.family] || AVATAR_TONES[hash(g.slug) % AVATAR_TONES.length];
@@ -3219,11 +3117,32 @@
   }
 
   function renderGroupsPage() {
-    const list = !groups.list ? null : groups.filter === "mine" ? groups.list.filter((g) => g.isMember) : groups.list;
+    const scope = !groups.list ? null : groups.filter === "mine" ? groups.list.filter((g) => g.isMember) : groups.list;
+    const q = groups.q.trim().toLowerCase();
+    const searching = !!(q || groups.family);
+    const list = scope && scope.filter((g) => (!groups.family || g.family === groups.family)
+      && (!q || `${g.name} ${g.description}`.toLowerCase().includes(q)));
     let body;
     if (!list) body = '<p class="pv__empty">Loading groups…</p>';
+    else if (!list.length && searching) body = '<p class="pv__empty">No groups match your search.</p>';
     else if (!list.length) body = `<p class="pv__empty">You haven't joined any groups yet. Pick a few from “All groups”.</p>`;
     else body = `<div class="group-grid">${list.map(groupCard).join("")}</div>`;
+    // scent families the groups actually use
+    const usedFamilies = families.filter((f) => groups.family === f.key || (groups.list || []).some((g) => g.family === f.key));
+    const search = `
+        <div class="filter-fields" role="search" aria-label="Search groups">
+          <label class="filter-field filter-field--wide">
+            <span>Search groups</span>
+            <input id="groupsQuery" type="search" value="${escapeHTML(groups.q)}" placeholder="Name or topic" autocomplete="off" />
+          </label>
+          <label class="filter-field">
+            <span>Scent family</span>
+            <select id="groupsFamily">
+              <option value="">All families</option>
+              ${usedFamilies.map((f) => `<option value="${f.key}"${groups.family === f.key ? " selected" : ""}>${f.name}</option>`).join("")}
+            </select>
+          </label>
+        </div>`;
     return `
       <div class="container pv">
         <nav class="pv__crumbs" aria-label="Breadcrumb">
@@ -3245,6 +3164,7 @@
             <button role="tab" aria-selected="${groups.filter === "all"}" data-groups-filter="all">All groups</button>
             <button role="tab" aria-selected="${groups.filter === "mine"}" data-groups-filter="mine">My groups <span class="tab-count">${groups.list ? groups.list.filter((g) => g.isMember).length : 0}</span></button>
           </div>` : ""}
+        ${search}
         ${body}
       </div>`;
   }
@@ -3272,14 +3192,27 @@
       <li class="greply">
         <a href="#profile/${encodeURIComponent(reply.user.username)}" aria-hidden="true" tabindex="-1">${avatar(authorFromUser(reply.user), "avatar--sm")}</a>
         <div class="greply__body">
-          <p class="greply__head">${profileLink(reply.user)} <span>${timeAgo(reply.createdAt)}</span></p>
-          <p class="greply__text">${escapeHTML(reply.text)}</p>
+          <p class="greply__head">${profileLink(reply.user)} <span>${timeAgo(reply.createdAt)}${reply.edited ? " · edited" : ""}</span></p>
+          ${mine && groupView.editing === String(reply.id) ? postEditForm(reply) : `<p class="greply__text">${escapeHTML(reply.text)}</p>`}
           <div class="greply__actions">
             ${postLikeButton(reply)}
-            ${mine ? `<button class="social-btn" data-post-delete="${reply.id}" data-parent="${reply.parent}">Delete</button>` : ""}
+            ${mine ? `<button class="social-btn" data-post-edit="${reply.id}">Edit</button><button class="social-btn" data-post-delete="${reply.id}" data-parent="${reply.parent}">Delete</button>` : ""}
           </div>
         </div>
       </li>`;
+  }
+
+  // Edit your own post or reply in place
+  function postEditForm(p) {
+    return `
+      <form class="composer gpost-edit" data-post-edit-form="${p.id}"${p.parent ? ` data-parent="${p.parent}"` : ""} novalidate>
+        <textarea name="text" rows="3" maxlength="2000" aria-label="Edit your post">${escapeHTML(p.text)}</textarea>
+        <div class="composer__foot">
+          <span class="composer__error" data-post-edit-error role="alert"></span>
+          <button type="button" class="btn btn--ghost btn--sm" data-cancel-post-edit>Cancel</button>
+          <button type="submit" class="btn btn--primary btn--sm">Save</button>
+        </div>
+      </form>`;
   }
 
   function postItem(post) {
@@ -3305,17 +3238,17 @@
           <a href="#profile/${encodeURIComponent(post.user.username)}" aria-hidden="true" tabindex="-1">${avatar(authorFromUser(post.user))}</a>
           <div>
             <p class="review__user">${profileLink(post.user)}</p>
-            <p class="review__meta">@${escapeHTML(post.user.username)} · ${timeAgo(post.createdAt)}</p>
+            <p class="review__meta">@${escapeHTML(post.user.username)} · ${timeAgo(post.createdAt)}${post.edited ? " · edited" : ""}</p>
           </div>
         </header>
-        <p class="gpost__text">${escapeHTML(post.text)}</p>
+        ${mine && groupView.editing === String(post.id) ? postEditForm(post) : `<p class="gpost__text">${escapeHTML(post.text)}</p>`}
         ${post.perfume ? perfumeTag(post.perfume) : ""}
         <footer class="review__actions">
           ${postLikeButton(post)}
           <button class="social-btn" data-toggle-replies="${post.id}" aria-expanded="${!!replies}">
             ${ICON.comment}<span>${post.replies}</span> <span class="social-btn__label">${post.replies === 1 ? "reply" : "replies"}</span>
           </button>
-          ${mine ? `<button class="social-btn" data-post-delete="${post.id}">Delete</button>` : ""}
+          ${mine ? `<button class="social-btn" data-post-edit="${post.id}">Edit</button><button class="social-btn" data-post-delete="${post.id}">Delete</button>` : ""}
         </footer>
         ${thread}
       </article>`;
@@ -3329,6 +3262,14 @@
     const g = v.group;
     const created = new Date(g.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" });
     const familyName = g.family ? families.find((f) => f.key === g.family).name : "";
+    const isCreator = !!(session.user && g.createdBy && g.createdBy.username === session.user.username);
+    const creatorActions = !isCreator ? "" : v.confirmDelete
+      ? `<span class="owner-confirm">Delete this group and all its posts?</span>
+         <button class="btn btn--ghost btn--sm" data-cancel-group-delete>Cancel</button>
+         <button class="btn btn--danger btn--sm" data-confirm-group-delete>Yes, delete</button>`
+      : `<a class="btn btn--ghost btn--follow-lg" href="#edit-group/${encodeURIComponent(g.slug)}">Edit group</a>
+         <button class="btn btn--ghost btn--follow-lg" data-delete-group>Delete group</button>`;
+    const searchingPosts = !!(v.q.trim() || v.since);
 
     let writeArea;
     if (!session.user) writeArea = joinPrompt(`Join the community to take part in ${escapeHTML(g.name)}.`);
@@ -3354,6 +3295,7 @@
 
     let posts;
     if (v.loading && !v.posts.length) posts = '<p class="pv__empty">Loading discussions…</p>';
+    else if (!v.posts.length && searchingPosts) posts = '<p class="pv__empty">No posts match your search.</p>';
     else if (!v.posts.length) posts = '<p class="pv__empty">No discussions yet — start the first one!</p>';
     else posts = `<div class="gpost-list${v.loading ? " is-loading" : ""}">${v.posts.map(postItem).join("")}</div>`;
 
@@ -3375,7 +3317,7 @@
               <strong>${formatCount(g.postsThisWeek)}</strong> posts this week
             </p>
           </div>
-          <div class="group-head__actions">${joinButton(g, "btn--follow-lg")}</div>
+          <div class="group-head__actions">${joinButton(g, "btn--follow-lg")}${creatorActions}</div>
         </section>
 
         <div class="pv__grid">
@@ -3388,6 +3330,19 @@
                   <button role="tab" aria-selected="${v.sort === "new"}" data-posts-sort="new">Newest</button>
                   <button role="tab" aria-selected="${v.sort === "top"}" data-posts-sort="top">Top</button>
                 </div>
+              </div>
+              <div class="filter-fields" role="search" aria-label="Search posts">
+                <label class="filter-field filter-field--wide">
+                  <span>Search posts</span>
+                  <input id="postsQuery" type="search" value="${escapeHTML(v.q)}" placeholder="Words or @member" autocomplete="off" />
+                </label>
+                <label class="filter-field">
+                  <span>Date</span>
+                  <select id="postsSince">
+                    ${[["", "Any time"], ["week", "Past week"], ["month", "Past month"], ["year", "Past year"]]
+                      .map(([val, label]) => `<option value="${val}"${v.since === val ? " selected" : ""}>${label}</option>`).join("")}
+                  </select>
+                </label>
               </div>
               ${posts}
               ${v.hasMore ? `<div class="all-reviews__more"><button class="btn btn--ghost" data-posts-more ${v.loading ? "disabled" : ""}>${v.loading ? "Loading…" : "Load more"}</button></div>` : ""}
@@ -3435,9 +3390,11 @@
     const v = groupView;
     const slug = v.slug;
     v.loading = true;
-    refreshPage();
+    refreshKeepingFocus();
     try {
       const q = new URLSearchParams({ sort: v.sort, limit: "10", offset: String(reset ? 0 : v.posts.length) });
+      if (v.q.trim()) q.set("q", v.q.trim());
+      if (v.since) q.set("since", v.since);
       const res = await api(`/groups/${encodeURIComponent(slug)}/posts?${q}`);
       if (groupView !== v || renderCurrent !== renderGroupPage) return;
       v.posts = reset ? res.posts : [...v.posts, ...res.posts];
@@ -3447,7 +3404,7 @@
       toast(err.message);
     }
     v.loading = false;
-    refreshPage();
+    refreshKeepingFocus();
   }
 
   async function loadGroup(slug) {
@@ -3604,39 +3561,40 @@
   }
 
   /* ---------- Create a group ---------- */
-  function renderCreateGroupPage() {
+  // "Create a group", or (with `edit`) "Edit group" for a group you created
+  function renderCreateGroupPage(edit = null) {
     return `
       <div class="container pv">
         <nav class="pv__crumbs" aria-label="Breadcrumb">
           ${BACK_BUTTON}
-          <span><a class="link" href="#groups">Groups</a> / <strong>Create a group</strong></span>
+          <span><a class="link" href="#groups">Groups</a> / ${edit ? `${escapeHTML(edit.name)} / <strong>Edit</strong>` : "<strong>Create a group</strong>"}</span>
         </nav>
         <div class="add">
           <section class="panel add__form-panel">
-            <h1 class="add__title">Create a group</h1>
-            <p class="section-sub">Start a space for a style, a house or a question you care about. You'll join it automatically.</p>
-            <form id="createGroupForm" class="add__form" novalidate>
+            <h1 class="add__title">${edit ? "Edit group" : "Create a group"}</h1>
+            <p class="section-sub">${edit ? `Update the name, description or scent family of ${escapeHTML(edit.name)}.` : "Start a space for a style, a house or a question you care about. You'll join it automatically."}</p>
+            <form id="createGroupForm" class="add__form" novalidate${edit ? ` data-editing="${escapeHTML(edit.slug)}"` : ""}>
               <label class="field">
                 <span class="field__label">Group name</span>
-                <input name="name" maxlength="60" placeholder="e.g. Vetiver Fans" autocomplete="off" required />
+                <input name="name" maxlength="60" placeholder="e.g. Vetiver Fans" autocomplete="off" required${edit ? ` value="${escapeHTML(edit.name)}"` : ""} />
                 <span class="field__error" data-error-for="name"></span>
               </label>
               <div class="notice" id="groupDupNotice" role="status" hidden></div>
               <label class="field">
                 <span class="field__label">What is it about?</span>
-                <textarea name="description" rows="3" maxlength="240" placeholder="Tell people what the group discusses" required></textarea>
+                <textarea name="description" rows="3" maxlength="240" placeholder="Tell people what the group discusses" required>${edit ? escapeHTML(edit.description) : ""}</textarea>
                 <span class="field__error" data-error-for="description"></span>
               </label>
               <fieldset class="field">
                 <legend class="field__label">Scent family <span class="field__optional">(optional)</span></legend>
                 <div class="check-chips">
-                  <label class="check-chip"><input type="radio" name="family" value="" checked /><span>None</span></label>
-                  ${families.map((f) => `<label class="check-chip"><input type="radio" name="family" value="${f.key}" /><span>${f.name}</span></label>`).join("")}
+                  <label class="check-chip"><input type="radio" name="family" value=""${!edit || !edit.family ? " checked" : ""} /><span>None</span></label>
+                  ${families.map((f) => `<label class="check-chip"><input type="radio" name="family" value="${f.key}"${edit && edit.family === f.key ? " checked" : ""} /><span>${f.name}</span></label>`).join("")}
                 </div>
               </fieldset>
               <div class="add__foot">
                 <span class="composer__error" id="createGroupError" role="alert"></span>
-                <button type="submit" class="btn btn--primary" id="createGroupSubmit">Create group</button>
+                <button type="submit" class="btn btn--primary" id="createGroupSubmit">${edit ? "Save changes" : "Create group"}</button>
               </div>
             </form>
           </section>
@@ -3667,8 +3625,10 @@
     clearTimeout(groupDupTimer);
     groupDupTimer = setTimeout(async () => {
       if (name.trim().length < 3) return showGroupDuplicate(null);
+      const form = $("#createGroupForm");
+      const except = form && form.dataset.editing ? `&except=${encodeURIComponent(form.dataset.editing)}` : "";
       try {
-        const res = await api(`/groups/check?name=${encodeURIComponent(name)}`);
+        const res = await api(`/groups/check?name=${encodeURIComponent(name)}${except}`);
         showGroupDuplicate(res.exists ? res.group : null);
       } catch (err) { /* checked again on submit */ }
     }, 300);
@@ -3681,6 +3641,7 @@
     if (body.description.length < 10) fields.description = "Tell people what the group is about (10+ characters).";
     setFieldErrors(form, fields);
     if (Object.keys(fields).length) return;
+    if (form.dataset.editing) return saveEditedGroup(form, body);
     $("#createGroupSubmit").disabled = true;
     try {
       const res = await api("/groups", { method: "POST", body });
@@ -3695,6 +3656,83 @@
         $("#createGroupError").textContent = err.message;
         $("#createGroupSubmit").disabled = false;
       }
+    }
+  }
+
+  async function saveEditedGroup(form, body) {
+    const slug = form.dataset.editing;
+    const submit = jQuery("#createGroupSubmit").prop("disabled", true).text("Saving…");
+    try {
+      const res = await api(`/groups/${encodeURIComponent(slug)}`, { method: "PATCH", body });
+      groups.list = (groups.list || []).map((g) => (g.slug === slug ? res.group : g));
+      if (groupView && groupView.slug === slug && groupView.group) Object.assign(groupView.group, res.group);
+      renderGroupsTeaser();
+      location.hash = `group/${encodeURIComponent(slug)}`;
+      toast(`${res.group.name} was updated`);
+    } catch (err) {
+      if (err.status === 409 && err.data.existing) showGroupDuplicate(err.data.existing);
+      else {
+        setFieldErrors(form, err.data && err.data.fields);
+        jQuery("#createGroupError").text(err.message);
+      }
+      submit.prop("disabled", !!(err.status === 409)).text("Save changes");
+    }
+  }
+
+  async function showEditGroup(slug) {
+    if (!session.user) {
+      history.replaceState(null, "", location.pathname + location.search);
+      showHome();
+      openAuth("login", "Log in to edit your group.");
+      return;
+    }
+    if (!groups.list) await loadGroups();
+    const g = (groups.list || []).find((x) => x.slug === slug);
+    if (!g || !g.createdBy || g.createdBy.username !== session.user.username) {
+      toast("Only the member who created this group can edit it.");
+      location.replace(g ? `#group/${encodeURIComponent(slug)}` : "#groups");
+      return;
+    }
+    renderCurrent = null;   // keep what the user typed; don't re-render
+    showView(renderCreateGroupPage(g), `Edit ${g.name}`);
+  }
+
+  async function deleteGroup(button) {
+    const v = groupView;
+    const slug = v.slug;
+    button.disabled = true;
+    try {
+      await api(`/groups/${encodeURIComponent(slug)}`, { method: "DELETE" });
+      const name = v.group.name;
+      groups.list = (groups.list || []).filter((g) => g.slug !== slug);
+      if (profileData) profileData.groups = (profileData.groups || []).filter((g) => g.slug !== slug);
+      renderGroupsTeaser();
+      location.hash = "groups";
+      toast(`${name} was deleted`);
+    } catch (err) {
+      button.disabled = false;
+      toast(err.message);
+    }
+  }
+
+  async function saveEditedPost(form) {
+    const v = groupView;
+    const id = form.dataset.postEditForm;
+    const text = String(jQuery(form).find("textarea").val() || "").trim();
+    const $error = jQuery(form).find("[data-post-edit-error]");
+    if (text.length < 2) { $error.text("Please write something first."); return; }
+    const $save = jQuery(form).find("button[type=submit]").prop("disabled", true);
+    try {
+      const res = await api(`/group-posts/${encodeURIComponent(id)}`, { method: "PATCH", body: { text } });
+      const replace = (list) => list.map((p) => (String(p.id) === id ? { ...p, ...res.post } : p));
+      v.posts = replace(v.posts);
+      Object.keys(v.replies).forEach((k) => { if (Array.isArray(v.replies[k])) v.replies[k] = replace(v.replies[k]); });
+      v.editing = null;
+      refreshPage();
+      toast(res.post.parent ? "Reply updated" : "Post updated");
+    } catch (err) {
+      $error.text(err.message);
+      $save.prop("disabled", false);
     }
   }
 

@@ -3,6 +3,24 @@
    Modern community platform: white / light gray + sage accent
    ========================================================= */
 
+/* ---------- Font: Plus Jakarta Sans, served from /fonts (one variable file per character set, weights 400–700) ---------- */
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/plus-jakarta-sans-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 /* ---------- Design tokens ---------- */
 :root {
   /* Neutrals */
@@ -1264,6 +1282,14 @@ html.modal-open { overflow: hidden; }
 .group-head__desc { max-width: 620px; color: var(--color-text-2); }
 .group-head__meta { font-size: 13.5px; color: var(--color-muted); }
 .group-head__meta strong { color: var(--color-text); }
+.group-head__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.group-head__actions .owner-confirm { flex-basis: 100%; text-align: right; }
+/* editing your own post / reply in place */
+.gpost-edit { margin: 4px 0 10px; }
+.greply .gpost-edit { margin: 6px 0; }
+/* Edit + Delete sit together on the right of a post's actions */
+.gpost .review__actions [data-post-edit] { margin-left: auto; }
+.gpost .review__actions [data-post-edit] + .social-btn { margin-left: 0; }
 .group-about { font-size: 14px; color: var(--color-text-2); margin-bottom: 10px; }
 .group-facts { display: grid; gap: 8px; font-size: 13.5px; }
 .group-facts li { display: flex; justify-content: space-between; gap: 10px; padding-top: 8px; border-top: 1px solid var(--color-border); }
@@ -1445,6 +1471,10 @@ html.modal-open { overflow: hidden; }
 .info-points li { display: grid; gap: 4px; padding: 14px; border-radius: var(--radius); background: var(--color-surface-muted); }
 .info-points strong { font-size: 14.5px; }
 .info-points span { font-size: 13.5px; color: var(--color-text-2); }
+/* Privacy page: the sections flow in two columns (CSS multi-column), one on narrow screens */
+.info-columns { columns: 2 260px; column-gap: 36px; column-rule: 1px solid var(--color-border); margin-top: 8px; }
+.info-columns .info-section { break-inside: avoid; }
+.info-columns .info-section:first-child { margin-top: 12px; }
 .info-section { margin-top: 20px; }
 .info-section h2 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
 .info-section p { color: var(--color-text-2); }
