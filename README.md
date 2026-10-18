@@ -45,20 +45,3 @@ Then open [http://localhost:3000](http://localhost:3000).
 
 The first time it starts, LUMIERE loads its built-in perfume catalog and a handful of discussion groups by itself, so there's something to look at right away.
 
-## Demo data (optional)
-
-An empty community is a bit quiet. These two commands fill it with demo members, reviews, likes, follows and group posts:
-
-```bash
-npm run seed:community   # about 2,000 demo members — takes a few minutes
-npm run seed:groups      # activity in the discussion groups
-```
-
-You can run them again whenever you like; they replace the old demo data and never touch real accounts. To clear the demo members out, run `npm run seed:community -- --remove`.
-
-Demo members can't log in, so sign up on the site to get an account of your own.
-
-## Good to know
-
-- Photos people upload go into `public/uploads/`, which isn't tracked by git.
-- Your `.env` holds the database password, so keep it out of git. It's already in `.gitignore`.
