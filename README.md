@@ -1,89 +1,64 @@
-# LUMIERE — fragrance social network
+# LUMIERE
 
-LUMIERE is a social network for fragrance lovers: members discover perfumes, rate and review them,
-follow each other, join discussion groups and chat in real time.
+A little social network for people who love perfume. Find new scents, see what others actually think of them, and chat with people who share your taste.
 
-Built with **Node.js + Express**, **MongoDB (Mongoose)**, **jQuery**, **React**, **D3.js** and **Socket.io**,
-organized as **MVC**.
+## What you can do
 
----
+- **Browse perfumes:** see what's trending this week, then filter by brand, notes, scent family or star rating.
+- **Rate and review:** leave a star rating and a few words on anything you've tried, and vote on longevity, sillage and when to wear it.
+- **Add missing perfumes:** add one with a photo and its three main notes, and edit or remove it later.
+- **Follow people:** follow members whose taste you like and keep up with what they're doing.
+- **Join groups:** join discussion groups, start threads, reply, and search old posts. You can also create a group of your own.
+- **Chat:** messages arrive in real time, with an unread badge so you don't miss anything.
+- **Charts:** two on the homepage show review trends and how active the groups are.
 
-## Requirements
+## Built with
 
-- **Node.js 20.19 or newer** (Mongoose 9 needs it) and npm
-- A **MongoDB** database — MongoDB Atlas (cloud) or a local MongoDB server
-- Internet access only if you use MongoDB Atlas (everything else, including fonts and libraries, is served by the app)
+Node.js and Express on the server, MongoDB through Mongoose, jQuery in the browser, a few React components, D3 for the charts, and Socket.io for the live chat.
 
-## Setup
+## Getting started
+
+You'll need **Node.js 20.19 or newer** and a **MongoDB** database. A free MongoDB Atlas cluster works fine, and so does MongoDB running on your own machine.
 
 ```bash
-# 1. install the dependencies
 npm install
-
-# 2. create your environment file and put your MongoDB connection string in it
 cp .env.example .env
-#    then edit .env:  MONGO_URI=...
+```
 
-# 3. start the server
+Open `.env` and put in your own MongoDB connection string:
+
+```
+MONGO_URI=mongodb+srv://<username>:<password>@<cluster-host>/?retryWrites=true&w=majority
+```
+
+For a local database, `mongodb://127.0.0.1:27017` is enough. The app keeps its data in a database called `lumiere`.
+
+If you're on Atlas, add your computer's IP address under **Network Access**, or the server won't be able to connect.
+
+## Running it
+
+```bash
 npm start
 ```
 
-Open **http://localhost:3000**.
+Then open [http://localhost:3000](http://localhost:3000).
 
-On the first start the server loads the built-in perfume catalog (100 perfumes) and the built-in
-discussion groups into the `lumiere` database automatically.
+The first time it starts, LUMIERE loads its built-in perfume catalog and a handful of discussion groups by itself, so there's something to look at right away.
 
-### MongoDB Atlas
+## Demo data (optional)
 
-If you use Atlas, allow the computer's IP address under **Network Access** in the Atlas dashboard
-(or allow access from anywhere, `0.0.0.0/0`, for a demo). Otherwise the server can't connect.
-
-### Demo data (optional)
-
-To make the site look like a real community, add demo members and group activity:
+An empty community is a bit quiet. These two commands fill it with demo members, reviews, likes, follows and group posts:
 
 ```bash
-npm run seed:community   # 2,000 demo members with reviews, likes and follows (takes a few minutes)
-npm run seed:groups      # members and posts in the discussion groups
+npm run seed:community   # about 2,000 demo members — takes a few minutes
+npm run seed:groups      # activity in the discussion groups
 ```
 
-Running them again replaces the demo data; real accounts are never touched.
-`npm run seed:community -- --remove` removes the demo members and everything they created.
-Demo members can't log in — sign up on the site to get your own account.
+You can run them again whenever you like; they replace the old demo data and never touch real accounts. To clear the demo members out, run `npm run seed:community -- --remove`.
 
-## Project structure (MVC)
+Demo members can't log in, so sign up on the site to get an account of your own.
 
-```
-server.js               Express app, static files, MongoDB connection, Socket.io
-models/                 Model — Mongoose schemas (User, Perfume, Review, Group, GroupPost, Message, …)
-controllers/            Controller — request handling for each feature (auth, users, perfumes, reviews,
-                        groups, messages, stats, contact, pages)
-routes/api.js           REST API routes (/api/...) -> controllers
-routes/pages.js         page route (/) -> controllers/pageController.js
-views/home.html         View — the page; public/js/main.js renders each screen in the browser
-public/js/main.js       client app (jQuery: AJAX to /api, events, forms, filters)
-public/js/react/        React components: video banner, notes canvas, top reviewers
-public/js/*-chart.js    D3 charts
-public/css/style.css    styles (CSS3)
-public/fonts/           Plus Jakarta Sans font files (@font-face)
-lib/                    helpers: sessions & passwords, live chat (Socket.io), catalog seeding, uploads
-scripts/                demo data seeding
-data/catalog.js         the built-in perfume catalog
-```
+## Good to know
 
-## Where each feature is
-
-| Feature | Where |
-|---|---|
-| Models with Create / Update / Delete / List / Search in the UI | **Perfume** (add, edit, delete your own, Trending list, search & filters) · **Review** (write, edit, delete your own, All reviews, filters) · **User** (sign up, edit profile, delete account, Members page, member search) · **Group** (create, edit / delete your own, Groups page, search) · **Group post** (post, edit / delete your own, group page, search) |
-| Search with several parameters | **Perfumes:** brand, notes, scent family, star rating (Trending section) · **Reviews:** stars, date, reviewer or keyword (All reviews page) · **Group posts:** words or @member, date |
-| jQuery + jQuery AJAX | every request to the API goes through `$.ajax` (`api()` in `public/js/main.js`); jQuery events for the filters, forms and page controls |
-| React | `public/js/react/video-banner.js` (Video), `notes-canvas.js` (Canvas), `top-reviewers.js` |
-| CSS3 | `text-shadow`, `transition`, multi-column (`columns` on the Privacy page), `@font-face`, `border-radius` — in `public/css/style.css` |
-| Live chat (Socket.io) | `lib/realtime.js` + Messages page |
-| D3 charts from the database | "Review trends" and "Group activity" on the homepage (`/api/stats/...`) |
-
-## Notes
-
-- Uploaded perfume photos are saved in `public/uploads/` (not in git).
-- `.env` holds the database password — it is in `.gitignore` and must never be committed.
+- Photos people upload go into `public/uploads/`, which isn't tracked by git.
+- Your `.env` holds the database password, so keep it out of git. It's already in `.gitignore`.
