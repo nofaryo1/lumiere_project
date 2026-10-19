@@ -1,11 +1,10 @@
 const mongoose = require("mongoose");
 
-// A one-to-one chat between two members
 const conversationSchema = new mongoose.Schema(
   {
     // the two members, always stored sorted so each pair has one conversation
     participants: [{ type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }],
-    key: { type: String, required: true, unique: true },   // "<idA>:<idB>"
+    key: { type: String, required: true, unique: true },
     lastMessage: {
       text: { type: String, default: "" },
       sender: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },

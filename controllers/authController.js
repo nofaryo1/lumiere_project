@@ -1,4 +1,3 @@
-// Sign up, log in, log out, and who is signed in
 const User = require("../models/User");
 const { hashPassword, checkPassword, startSession, endSession } = require("../lib/auth");
 const { text, meJSON } = require("../lib/helpers");
@@ -31,7 +30,6 @@ exports.signup = async (req, res) => {
   res.status(201).json(await meJSON(user));
 };
 
-// Compared against when an account doesn't exist, so timing stays the same
 const DUMMY_HASH = require("bcryptjs").hashSync("not-a-real-password", 12);
 
 exports.login = async (req, res) => {

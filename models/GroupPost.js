@@ -1,17 +1,16 @@
 const mongoose = require("mongoose");
 
-// A post in a group's discussion. Replies are posts with a `parent`.
 const groupPostSchema = new mongoose.Schema(
   {
     group: { type: mongoose.Schema.Types.ObjectId, ref: "Group", required: true },
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     parent: { type: mongoose.Schema.Types.ObjectId, ref: "GroupPost", default: null },
     text: { type: String, required: true, trim: true },
-    perfume: { type: String, default: null },                 // optional perfume slug it's about
+    perfume: { type: String, default: null },
     likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
     likesCount: { type: Number, default: 0 },
     repliesCount: { type: Number, default: 0 },
-    editedAt: { type: Date, default: null },                  // set when the author edits it
+    editedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

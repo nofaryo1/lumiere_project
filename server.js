@@ -11,9 +11,8 @@ app.use("/vendor/react", express.static(path.join(__dirname, "node_modules", "re
 app.use("/vendor/react-dom", express.static(path.join(__dirname, "node_modules", "react-dom", "umd")));
 app.use("/vendor/jquery", express.static(path.join(__dirname, "node_modules", "jquery", "dist")));
 app.use("/api", require("./routes/api"));
-require("./lib/startup");   // loads the built-in catalog once MongoDB is connected
+require("./lib/startup");
 
-// חיבור ל-MongoDB
 mongoose
   .connect(process.env.MONGO_URI, { dbName: "lumiere" })
   .then(() => console.log("MongoDB connected"))
@@ -21,7 +20,6 @@ mongoose
 
 app.use(require("./routes/pages"));
 
-// HTTP server shared by Express and the live messenger (Socket.io)
 const server = require("http").createServer(app);
 require("./lib/realtime").attachRealtime(server);
 

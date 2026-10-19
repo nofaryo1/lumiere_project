@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 
-// Someone who joined a group
 const groupMemberSchema = new mongoose.Schema(
   {
     group: { type: mongoose.Schema.Types.ObjectId, ref: "Group", required: true },

@@ -1,4 +1,3 @@
-// Reviews: one perfume's reviews, writing / editing / deleting your own, all reviews, "helpful" votes
 const mongoose = require("mongoose");
 const Review = require("../models/Review");
 const User = require("../models/User");
@@ -6,9 +5,8 @@ const {
   text, limitParam, escapeRegex, reviewJSON, statsFor, followingIds, requirePerfume, reviewsChanged,
 } = require("../lib/helpers");
 
-const SINCE_DAYS = { week: 7, month: 30, year: 365 };   // ?since= on the All reviews page
+const SINCE_DAYS = { week: 7, month: 30, year: 365 };
 
-/* ---------- Reviews & likes ---------- */
 exports.forPerfume = async (req, res) => {
   const [list, mine] = await Promise.all([
     Review.find({ perfume: req.params.slug }).sort({ likesCount: -1, createdAt: -1 }).limit(60).populate("user", "username displayName"),
@@ -16,7 +14,7 @@ exports.forPerfume = async (req, res) => {
   ]);
   const all = [...mine.filter((m) => !list.some((r) => r._id.equals(m._id))), ...list];
   const counts = await Review.aggregate([{ $match: { perfume: req.params.slug } }, { $group: { _id: "$rating", n: { $sum: 1 } } }]);
-  const breakdown = [1, 2, 3, 4, 5].map((star) => (counts.find((c) => c._id === star) || { n: 0 }).n);   // index 0 = 1★
+  const breakdown = [1, 2, 3, 4, 5].map((star) => (counts.find((c) => c._id === star) || { n: 0 }).n);
   const total = breakdown.reduce((a, b) => a + b, 0);
   res.json({ reviews: all.filter((r) => r.user).map((r) => reviewJSON(r, req.user)), total, breakdown });
 };
@@ -29,7 +27,6 @@ function reviewInput(req, res) {
   return { rating, text: body };
 }
 
-// Post a review (members can review the same perfume again later)
 exports.create = async (req, res) => {
   if (!(await requirePerfume(req, res))) return;
   const input = reviewInput(req, res);
@@ -39,7 +36,6 @@ exports.create = async (req, res) => {
   res.status(201).json({ stats: await statsFor(req.params.slug) });
 };
 
-// Edit / delete one of your own reviews
 async function myReview(req, res) {
   if (!mongoose.isValidObjectId(req.params.id)) { res.status(404).json({ error: "Review not found." }); return null; }
   const review = await Review.findOne({ _id: req.params.id, user: req.user._id });
@@ -65,7 +61,6 @@ exports.remove = async (req, res) => {
   res.json({ stats: await statsFor(review.perfume) });
 };
 
-/* ---------- All reviews (homepage "Popular reviews" + "See all reviews") ---------- */
 exports.list = async (req, res) => {
   const sort = req.query.sort === "newest" ? { createdAt: -1 } : { likesCount: -1, createdAt: -1 };
   const limit = limitParam(req.query.limit, 10, 50);
@@ -76,9 +71,8 @@ exports.list = async (req, res) => {
     filter.user = { $in: await followingIds(req.user) };
   }
   if (req.query.rating && /^[1-5]$/.test(req.query.rating)) filter.rating = Number(req.query.rating);
-  if (req.query.perfume) filter.perfume = text(req.query.perfume, 200);   // one perfume's reviews
+  if (req.query.perfume) filter.perfume = text(req.query.perfume, 200);
   if (SINCE_DAYS[req.query.since]) filter.createdAt = { $gte: new Date(Date.now() - SINCE_DAYS[req.query.since] * 24 * 60 * 60 * 1000) };
-  // ?q= : words in the review, or the reviewer's name / @username
   const q = text(req.query.q, 60).replace(/^@/, "");
   if (q) {
     const re = new RegExp(escapeRegex(q), "i");
@@ -96,7 +90,6 @@ exports.list = async (req, res) => {
   });
 };
 
-// "Helpful" votes on a review
 async function setReviewLike(req, res, liked) {
   if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Review not found." });
   const review = await Review.findById(req.params.id);

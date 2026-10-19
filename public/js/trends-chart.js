@@ -1,17 +1,6 @@
-/* =========================================================
-   LUMIERE — Review trends chart (D3)
-   Cumulative reviews per perfume over the past year. The line on
-   top is the most-reviewed perfume at that moment; the strip under
-   the chart shows which perfume led each week.
-
-   LumiereTrends.mount(container, data, { nameOf })
-     data   = response of GET /api/stats/review-trends
-     nameOf = slug -> display name
-   ========================================================= */
 (function () {
   "use strict";
 
-  // Categorical slots, fixed order (validated: CVD-safe on white, see dataviz palette)
   const COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"];
   const fmt = d3.format(",");
   const fmtWeek = d3.utcFormat("%b %-d, %Y");
@@ -28,7 +17,6 @@
     root.innerHTML = "";
     const wrap = d3.select(root).append("div").attr("class", "trends");
 
-    // ---- headline numbers ----
     const kpis = wrap.append("div").attr("class", "trends__kpis");
     const kpi = (label, value, sub) => {
       const el = kpis.append("div").attr("class", "trends__kpi");
@@ -41,7 +29,6 @@
     kpi("Most reviewed right now", leaderNow ? nameOf(leaderNow) : "—", leader ? `${fmt(leader.values[last])} reviews` : "");
     kpi("Lead changes this year", String(leadChanges), "times a new perfume took the top spot");
 
-    // ---- legend (line keys) ----
     const legend = wrap.append("ul").attr("class", "trends__legend").attr("aria-label", "Legend");
     series.forEach((s) => {
       const li = legend.append("li");
@@ -49,7 +36,6 @@
       li.append("a").attr("href", `#perfume/${s.slug}`).text(s.name);
     });
 
-    // ---- chart ----
     const figure = wrap.append("div").attr("class", "trends__figure");
     const tooltip = wrap.append("div").attr("class", "trends__tooltip").attr("role", "status").property("hidden", true);
 
@@ -71,7 +57,6 @@
         .attr("role", "img")
         .attr("aria-label", `Cumulative reviews per perfume over the past year. Most reviewed now: ${leaderNow ? nameOf(leaderNow) : "none"}.`);
 
-      // grid + axes (recessive)
       svg.append("g").attr("class", "trends__grid")
         .selectAll("line").data(y.ticks(4)).join("line")
         .attr("x1", m.left).attr("x2", width - m.right)
@@ -85,14 +70,12 @@
         .call(d3.axisBottom(x).ticks(width < 560 ? 4 : 8).tickSize(0).tickFormat(d3.utcFormat("%b")))
         .call((g) => g.select(".domain").remove());
 
-      // lines
       const line = d3.line().x((d, i) => x(weeks[i])).y((d) => y(d)).curve(d3.curveMonotoneX);
       svg.append("g").selectAll("path").data(series).join("path")
         .attr("class", "trends__line")
         .attr("stroke", (s) => s.color)
         .attr("d", (s) => line(s.values));
 
-      // direct label for the current leader only (legend carries the rest)
       if (leader && width >= 560) {
         const ly = y(leader.values[last]);
         svg.append("circle").attr("cx", x(weeks[last])).attr("cy", ly).attr("r", 4)
@@ -103,7 +86,6 @@
         label.append("tspan").attr("x", x(weeks[last]) + 10).attr("dy", "1.2em").text(leader.name.length > 14 ? leader.name.slice(0, 13) + "…" : leader.name);
       }
 
-      // leader strip: one cell per week, colored by that week's leader
       const stripY = m.top + plotH + 8;
       const cellW = (width - m.left - m.right) / weeks.length;
       svg.append("text").attr("class", "trends__strip-label")
@@ -117,7 +99,6 @@
         .attr("rx", 2)
         .attr("fill", (d) => colorOf.get(d) || "#dcdfdd");
 
-      // ---- crosshair + tooltip ----
       const cross = svg.append("line").attr("class", "trends__cross")
         .attr("y1", m.top).attr("y2", stripY + stripH).style("display", "none");
       const dots = svg.append("g").selectAll("circle").data(series).join("circle")
@@ -180,7 +161,6 @@
         });
     }
 
-    // ---- table view (every value reachable without hovering) ----
     const details = wrap.append("details").attr("class", "trends__table");
     details.append("summary").text("Show data table");
     const scroller = details.append("div").attr("class", "trends__table-scroll");
@@ -207,7 +187,7 @@
       if (Math.abs(root.clientWidth - lastWidth) < 8) return;
       lastWidth = root.clientWidth;
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(draw);   // redraw after layout settles
+      frame = requestAnimationFrame(draw);
     }).observe(root);
   }
 

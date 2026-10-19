@@ -1,5 +1,3 @@
-// Perfumes: the list, adding / editing / deleting your own, photos, notes, likes,
-// and the per-member votes (performance, when to wear, agree with pros / cons)
 const Perfume = require("../models/Perfume");
 const Review = require("../models/Review");
 const Like = require("../models/Like");
@@ -12,8 +10,6 @@ const {
   FAMILIES, text, perfumeJSON, statsFor, requirePerfume, reviewsChanged,
 } = require("../lib/helpers");
 
-/* ---------- Perfumes ---------- */
-// Same perfume already on the site? ("Dior Sauvage" / "dior sauvage EDP" / "Sauvage" by Dior)
 async function findDuplicate(brand, name, exceptSlug = null) {
   const nk = nameKey(brand, name);
   if (!nk) return null;
@@ -25,7 +21,6 @@ async function findDuplicate(brand, name, exceptSlug = null) {
   return sameName.find((c) => !b || !normalize(c.brand) || normalize(c.brand) === b) || null;
 }
 
-// Counts activity per perfume overall and in recent windows (used for Trending)
 function activityGroup(extra = {}) {
   const day = 24 * 60 * 60 * 1000;
   const now = Date.now();
@@ -66,13 +61,11 @@ exports.list = async (req, res) => {
   res.json({ perfumes: list.map(perfumeJSON), stats });
 };
 
-// Live duplicate check while someone types in "Add a perfume"
 exports.check = async (req, res) => {
   const dup = await findDuplicate(text(req.query.brand, 60), text(req.query.name, 80), text(req.query.except, 200) || null);
   res.json({ exists: !!dup, perfume: dup ? { slug: dup.slug, brand: dup.brand, name: dup.name } : null });
 };
 
-// Brand, name, families and exactly 3 notes (shared by adding and editing)
 function perfumeFields(input) {
   const brand = text(input.brand, 60);
   const name = text(input.name, 80);
@@ -85,7 +78,6 @@ function perfumeFields(input) {
   return { brand, name, tags, notes, fields };
 }
 
-// Only the member who added a (community) perfume may change it
 async function ownPerfume(req, res) {
   const perfume = await Perfume.findOne({ slug: req.params.slug });
   if (!perfume) { res.status(404).json({ error: "Perfume not found." }); return null; }
@@ -149,7 +141,6 @@ exports.update = async (req, res) => {
   res.json({ perfume: json });
 };
 
-// Delete a perfume you added, with its reviews, likes and votes
 exports.remove = async (req, res) => {
   const perfume = await ownPerfume(req, res);
   if (!perfume) return;
@@ -167,7 +158,6 @@ exports.remove = async (req, res) => {
   res.json({ ok: true });
 };
 
-// Change the photo of a perfume you added
 exports.updateImage = async (req, res) => {
   const perfume = await ownPerfume(req, res);
   if (!perfume) return;
@@ -180,13 +170,10 @@ exports.updateImage = async (req, res) => {
   res.json({ image: perfume.image });
 };
 
-/* ---------- Performance votes (longevity, sillage, value) — one per member per perfume ---------- */
 const PERF_KEYS = ["longevity", "sillage", "value"];
 
 const WEAR_KEYS = ["Spring", "Summer", "Fall", "Winter", "Day", "Night"];
 
-// Shared totals for a perfume (performance per level, when-to-wear picks, agree votes)
-// + the signed-in member's own selections
 async function performanceFor(slug, user) {
   const [rows, mine] = await Promise.all([
     PerformanceVote.aggregate([
@@ -218,7 +205,6 @@ exports.performance = async (req, res) => {
   res.json(await performanceFor(req.params.slug, req.user));
 };
 
-// Set (or clear with level: null) your vote for one measure
 exports.votePerformance = async (req, res) => {
   if (!(await requirePerfume(req, res))) return;
   const key = req.body.key;
@@ -233,7 +219,6 @@ exports.votePerformance = async (req, res) => {
   res.json(await performanceFor(req.params.slug, req.user));
 };
 
-// Pick / unpick a season or time of day: { pick: "Fall", on: true }
 exports.voteWear = async (req, res) => {
   if (!(await requirePerfume(req, res))) return;
   const pick = String(req.body.pick || "");
@@ -246,7 +231,6 @@ exports.voteWear = async (req, res) => {
   res.json(await performanceFor(req.params.slug, req.user));
 };
 
-// Agree / un-agree with one of the default pros or cons: { key: "pros:<text>", on: true }
 exports.voteAgree = async (req, res) => {
   if (!(await requirePerfume(req, res))) return;
   const key = String(req.body.key || "");
@@ -263,10 +247,8 @@ exports.voteAgree = async (req, res) => {
   res.json(await performanceFor(req.params.slug, req.user));
 };
 
-/* ---------- Notes: member-added perfumes have exactly 3, and only the member who added the perfume edits them ---------- */
 const NOTES_REQUIRED = 3;
 
-// "Bergamot, vanilla ,, Musk" (or an array) -> ["Bergamot", "vanilla", "Musk"]
 function notesFrom(value) {
   const input = Array.isArray(value) ? value : String(value || "").split(",");
   return [...new Set(input.map((n) => text(n, 40)).filter(Boolean))];
@@ -282,14 +264,13 @@ exports.updateNotes = async (req, res) => {
     return res.status(403).json({ error: "Only the member who added this perfume can edit its notes." });
   }
   perfume.notes = notes;
-  perfume.notesAddedBy = null;   // the notes are the perfume owner's own (no separate credit)
+  perfume.notesAddedBy = null;
   const updated = await perfume.save();
   const payload = { slug: updated.slug, notes: updated.notes, notesAddedBy: null };
-  realtime.emitToAll("perfume:notes", payload);   // update everyone viewing it, live
+  realtime.emitToAll("perfume:notes", payload);
   res.json(payload);
 };
 
-/* ---------- Likes (the ♥ on a perfume) ---------- */
 exports.like = async (req, res) => {
   if (!(await requirePerfume(req, res))) return;
   await Like.updateOne(

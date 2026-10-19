@@ -1,9 +1,7 @@
-// Homepage charts: group posts per month, review trends
 const Review = require("../models/Review");
 const Group = require("../models/Group");
 const GroupPost = require("../models/GroupPost");
 
-/* ---------- Group posts per month (homepage chart) ---------- */
 let groupTrendCache = { at: 0, data: null };
 
 exports.groupPosts = async (req, res) => {
@@ -33,9 +31,6 @@ exports.groupPosts = async (req, res) => {
   res.json(data);
 };
 
-/* ---------- Review trends (homepage chart) ----------
-   Cumulative reviews per perfume, week by week, and which perfume
-   had the most reviews ("the leader") at the end of each week. */
 let trendCache = { at: 0, data: null };
 
 exports.reviewTrends = async (req, res) => {
@@ -44,7 +39,6 @@ exports.reviewTrends = async (req, res) => {
   const WEEKS = 52;
   const weekMs = 7 * 24 * 60 * 60 * 1000;
   const now = new Date();
-  // Monday 00:00 UTC of the current week
   const thisWeek = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - ((now.getUTCDay() + 6) % 7)));
   const weeks = Array.from({ length: WEEKS }, (_, i) => new Date(thisWeek.getTime() - (WEEKS - 1 - i) * weekMs));
   const start = weeks[0];
@@ -56,7 +50,6 @@ exports.reviewTrends = async (req, res) => {
     } },
   ]);
 
-  // cumulative counts per perfume, per week
   const cum = {};
   for (const { _id, n } of rows) {
     const series = cum[_id.p] || (cum[_id.p] = new Array(WEEKS).fill(0));
@@ -68,7 +61,6 @@ exports.reviewTrends = async (req, res) => {
   const totals = new Array(WEEKS).fill(0);
   for (const series of Object.values(cum)) series.forEach((v, i) => { totals[i] += v; });
 
-  // leader each week (ties keep the previous leader)
   const leaders = [];
   for (let i = 0; i < WEEKS; i++) {
     let best = leaders[i - 1] || null;
@@ -78,7 +70,6 @@ exports.reviewTrends = async (req, res) => {
     leaders.push(best && cum[best][i] > 0 ? best : null);
   }
 
-  // lines: everyone who ever led + the current top, max 5
   const byFinal = Object.keys(cum).sort((a, b) => cum[b][WEEKS - 1] - cum[a][WEEKS - 1]);
   const picked = [...new Set([...leaders.filter(Boolean), ...byFinal])].slice(0, 5)
     .sort((a, b) => cum[b][WEEKS - 1] - cum[a][WEEKS - 1]);

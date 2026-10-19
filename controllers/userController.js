@@ -1,4 +1,3 @@
-// Member profiles, following, member search, top reviewers and the activity feed
 const User = require("../models/User");
 const Perfume = require("../models/Perfume");
 const Review = require("../models/Review");
@@ -16,7 +15,6 @@ const realtime = require("../lib/realtime");
 const { checkPassword, endSession } = require("../lib/auth");
 const { text, limitParam, escapeRegex, authorJSON, reviewJSON, followingIds } = require("../lib/helpers");
 
-/* ---------- Profiles ---------- */
 exports.profile = async (req, res) => {
   const user = await User.findOne({ username: String(req.params.username).toLowerCase() });
   if (!user) return res.status(404).json({ error: "User not found." });
@@ -50,9 +48,6 @@ exports.updateMe = async (req, res) => {
   res.json({ user: req.user.toPublic() });
 };
 
-// Delete your own account (confirmed with your password).
-// Your reviews, likes, votes, follows, group posts and messages go with it;
-// perfumes and groups you created stay on LUMIERE without an owner.
 exports.deleteMe = async (req, res) => {
   const password = typeof req.body.password === "string" ? req.body.password : "";
   if (!(await checkPassword(password, req.user.passwordHash))) {
@@ -64,7 +59,6 @@ exports.deleteMe = async (req, res) => {
     Conversation.find({ participants: me }).distinct("_id"),
   ]);
   const myTopPosts = myPosts.filter((p) => !p.parent).map((p) => p._id);
-  // replies on other people's posts: keep their reply counts right
   for (const reply of myPosts.filter((p) => p.parent)) {
     await GroupPost.updateOne({ _id: reply.parent }, { $inc: { repliesCount: -1 } }, { timestamps: false });
   }
@@ -85,14 +79,13 @@ exports.deleteMe = async (req, res) => {
     ContactRequest.updateMany({ user: me }, { $set: { user: null } }),
   ]);
   await endSession(req, res);
-  await Session.deleteMany({ user: me });   // signed out everywhere
+  await Session.deleteMany({ user: me });
   await req.user.deleteOne();
   realtime.disconnectUser(me);
   realtime.emitToAll("reviews:changed", {});
   res.json({ ok: true });
 };
 
-/* ---------- Following ---------- */
 async function findUser(req, res) {
   const user = await User.findOne({ username: String(req.params.username).toLowerCase() });
   if (!user) res.status(404).json({ error: "User not found." });
@@ -118,7 +111,6 @@ exports.unfollow = async (req, res) => {
   res.json({ following: false, followers: await Follow.countDocuments({ following: target._id }) });
 };
 
-// Followers / following lists on a profile
 async function followList(req, res, direction) {
   const user = await findUser(req, res);
   if (!user) return;
@@ -137,9 +129,6 @@ async function followList(req, res, direction) {
 exports.followers = (req, res) => followList(req, res, "followers");
 exports.following = (req, res) => followList(req, res, "following");
 
-/* ---------- Members: search + top reviewers ---------- */
-// Search every member (registered and demo) by name or @username; closest matches first
-// Every member, A–Z, a page at a time (?search= narrows it by name or @username)
 exports.directory = async (req, res) => {
   const limit = limitParam(req.query.limit, 30, 60);
   const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
@@ -177,7 +166,6 @@ exports.search = async (req, res) => {
   res.json({ users: users.map((u) => ({ username: u.username, displayName: u.displayName })) });
 };
 
-// ?period=month -> ranked by reviews submitted since the 1st of the current month
 exports.top = async (req, res) => {
   const limit = limitParam(req.query.limit, 5, 20);
   const now = new Date();
@@ -195,8 +183,6 @@ exports.top = async (req, res) => {
   res.json({ users: top.map(({ _id, ...u }) => u) });
 };
 
-/* ---------- Activity feed ---------- */
-// scope=following: people you follow · scope=all: everyone
 exports.activity = async (req, res) => {
   const limit = limitParam(req.query.limit, 12, 40);
   let ids = null;

@@ -1,9 +1,3 @@
-/* =========================================================
-   LUMIERE — Homepage styles
-   Modern community platform: white / light gray + sage accent
-   ========================================================= */
-
-/* ---------- Font: Plus Jakarta Sans, served from /fonts (one variable file per character set, weights 400–700) ---------- */
 @font-face {
   font-family: "Plus Jakarta Sans";
   font-style: normal;
@@ -21,9 +15,7 @@
   unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* ---------- Design tokens ---------- */
 :root {
-  /* Neutrals */
   --color-bg: #f5f6f5;
   --color-surface: #ffffff;
   --color-surface-muted: #f0f2f1;
@@ -33,21 +25,17 @@
   --color-text-2: #4a524f;
   --color-muted: #6e7773;
 
-  /* Accent (sage) */
   --color-accent: #4f8068;
   --color-accent-hover: #3f6b56;
   --color-accent-soft: #e6efe9;
   --color-accent-softer: #f2f7f4;
 
-  /* Functional */
   --color-star: #e2a336;
   --color-up: #3f8a5f;
   --color-like: #d4566b;
 
-  /* Type */
   --font: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
-  /* Shape */
   --radius-sm: 8px;
   --radius: 12px;
   --radius-lg: 16px;
@@ -61,7 +49,6 @@
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
-/* ---------- Base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: calc(var(--header-h) + 12px); }
 
@@ -94,7 +81,6 @@ button { cursor: pointer; }
 
 svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-/* ---------- Buttons, links, tags ---------- */
 .btn {
   display: inline-flex;
   align-items: center;
@@ -172,7 +158,6 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
 }
 .icon-btn svg { width: 20px; height: 20px; }
 
-/* ---------- Header ---------- */
 .header {
   position: sticky;
   top: 0;
@@ -198,13 +183,11 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
   flex-shrink: 0;
 }
 .logo__mark {
-  /* minimalist perfume bottle (outline, cap and perfume) in the brand sage (#4f8068, same as --color-accent) */
   flex-shrink: 0;
   width: 21px;
   height: 26px;
   background: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%223.6 2.3 16.8 21.2%22%3E%3Crect x=%225%22 y=%229.2%22 width=%2214%22 height=%2212.8%22 rx=%223.6%22 fill=%22none%22 stroke=%22%234f8068%22 stroke-width=%221.8%22/%3E%3Crect x=%227.6%22 y=%2214.6%22 width=%228.8%22 height=%225%22 rx=%221.5%22 fill=%22%234f8068%22/%3E%3Crect x=%2210.4%22 y=%226.6%22 width=%223.2%22 height=%222.6%22 fill=%22%234f8068%22/%3E%3Crect x=%228.8%22 y=%222.8%22 width=%226.4%22 height=%223.8%22 rx=%221.1%22 fill=%22%234f8068%22/%3E%3C/svg%3E") center / contain no-repeat;
 }
-/* navbar logo: a tiny, soft lift with a gentle spring on hover */
 .header .logo__mark { transition: transform 0.45s cubic-bezier(0.34, 1.7, 0.5, 1); }
 .header .logo:hover .logo__mark,
 .header .logo:focus-visible .logo__mark { transform: translateY(-2.5px); }
@@ -258,7 +241,6 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
 .nav-toggle { display: none; position: relative; }
 .nav-toggle__badge { position: absolute; top: -6px; right: -6px; margin-left: 0; }
 
-/* Search suggestions dropdown (shared) */
 .search-suggest {
   position: absolute;
   top: calc(100% + 6px);
@@ -289,7 +271,6 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
 .suggest-item__rating { margin-left: auto; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .suggest-empty { padding: 10px; font-size: 13.5px; color: var(--color-muted); }
 
-/* ---------- Video banner (React) ---------- */
 .video-section { background: var(--color-surface); padding-top: 20px; }
 .video-section .container:empty { display: none; }
 .video-banner {
@@ -308,7 +289,6 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
 .video-banner__eyebrow { font-size: 12.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.85; }
 .video-banner__title { font-size: clamp(17px, 2vw, 22px); font-weight: 700; line-height: 1.25; letter-spacing: -0.01em; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.25); }
 
-/* ---------- Hero / search ---------- */
 .hero {
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
@@ -409,19 +389,14 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
   animation: pulse 2s infinite;
 }
 
-/* Hidden (but keeping its space) until the login state has loaded */
 .snapshot.is-pending { visibility: hidden; }
 
-/* Signed in: no side box, the hero search spans the row
-   (.is-member is set on <html> before the first paint, from the last known login state) */
 .hero--solo .hero__grid,
 .is-member .hero__grid { grid-template-columns: 1fr; }
 .is-member .snapshot.is-pending { display: none; }
-/* A page link opened directly (#perfume/..., #groups, ...): the homepage stays hidden until that page is drawn */
 .is-opening-view main,
 .is-opening-view .footer { visibility: hidden; }
 
-/* ---------- Avatars ---------- */
 .avatar {
   display: inline-grid;
   place-items: center;
@@ -435,11 +410,10 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
   font-weight: 700;
 }
 .avatar--sm { width: 30px; height: 30px; font-size: 12px; }
-.avatar-stack { display: flex; min-height: 30px; }   /* keeps its height before the avatars load */
+.avatar-stack { display: flex; min-height: 30px; }
 .avatar-stack .avatar { width: 30px; height: 30px; font-size: 11px; border: 2px solid var(--color-accent-softer); }
 .avatar-stack .avatar + .avatar { margin-left: -9px; }
 
-/* ---------- Sections ---------- */
 .section { padding-block: 36px; }
 .section--alt { background: var(--color-surface); border-block: 1px solid var(--color-border); }
 
@@ -486,7 +460,6 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
 .filter-bar .tag[aria-pressed="true"] { background: var(--color-text); border-color: var(--color-text); color: #fff; }
 .filter-bar .tag__count { margin-left: 6px; font-size: 12px; opacity: 0.6; }
 
-/* Labeled filters (perfumes: brand / notes / rating · reviews: date / reviewer or keyword · members) */
 .filter-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin-bottom: 16px; }
 .filter-field { display: grid; gap: 4px; flex: 0 1 200px; min-width: 150px; font-size: 12.5px; font-weight: 600; color: var(--color-muted); }
 .filter-field--wide { flex-basis: 320px; }
@@ -499,7 +472,6 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
 }
 .filter-field select:focus,
 .filter-field input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px var(--color-accent-soft); }
-/* same flat dropdown with a small chevron in every browser (Safari draws its own gray buttons otherwise) */
 .filter-field select {
   -webkit-appearance: none; appearance: none; padding-right: 30px; cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 12 12%22%3E%3Cpath d=%22M2.5 4.5 6 8l3.5-3.5%22 fill=%22none%22 stroke=%22%236b7280%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3C/svg%3E");
@@ -520,7 +492,6 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
 
 .section-head__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
 
-/* ---------- Carousel (trending row) ---------- */
 .carousel {
   --per-view: 5;
   --gap: 16px;
@@ -533,7 +504,6 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
   scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
   scrollbar-width: none;
-  /* room for card hover lift/shadow inside the scroll area */
   padding-block: 4px 8px;
   margin-block: -4px -8px;
 }
@@ -547,7 +517,6 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
 .carousel-controls .icon-btn:hover:not(:disabled) { border-color: var(--color-text-2); }
 .carousel-controls .icon-btn:disabled { opacity: 0.4; cursor: default; }
 
-/* ---------- Perfume card ---------- */
 .perfume-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
 
 .perfume-card {
@@ -565,7 +534,7 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
 
 .perfume-card__media {
   position: relative;
-  height: 150px;      /* every card's image frame is the same size */
+  height: 150px;
 }
 .perfume-card__media > .rank,
 .perfume-card__media > .trend,
@@ -617,7 +586,6 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
 
 .rating { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--color-muted); }
 .rating__score { font-size: 15px; font-weight: 700; color: var(--color-text); }
-/* Two stacked star rows: gray base + amber fill clipped to the rating */
 .stars { position: relative; display: inline-block; line-height: 0; }
 .stars__base, .stars__fill { display: inline-flex; gap: 1px; }
 .stars__base { color: #dcdfdd; }
@@ -653,18 +621,6 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
 .action-btn--icon[aria-pressed="true"] { background: #fbecef; border-color: var(--color-like); color: var(--color-like); }
 .action-btn--icon[aria-pressed="true"] svg { fill: currentColor; }
 
-/* ---------- Perfume image frame (reusable) ----------
-   Used for every perfume visual: cards, search results, recommendations,
-   review cards and search suggestions. The frame size comes from its
-   parent (or a size modifier); the image always sits inside an identical
-   padded box, scaled with object-fit: contain — never cropped or stretched,
-   small images scale up and large ones scale down to the same box.
-   The box is 80% of the frame (10% padding per side).
-
-   Tunables (per component or per image):
-     --media-pad   padding around the bottle (default 10%)
-     --media-bg    frame background
-     --media-zoom  per-photo fine-tune for photos with a lot of empty space */
 .perfume-media {
   --media-pad: 10%;
   --media-bg: var(--color-surface-muted);
@@ -681,19 +637,16 @@ svg[viewBox="0 0 24 24"] { fill: none; stroke: currentColor; stroke-width: 1.8; 
   left: var(--media-pad);
   width: calc(100% - 2 * var(--media-pad));
   height: calc(100% - 2 * var(--media-pad));
-  object-fit: contain;          /* keep aspect ratio, never crop */
+  object-fit: contain;
   object-position: center;
   transform: scale(var(--media-zoom, 1));
 }
-/* White product-shot backgrounds blend into the frame's neutral background */
 img.perfume-media__img { mix-blend-mode: multiply; }
 
-/* Show the illustrated bottle only when there is no (working) photo */
 .perfume-media.has-photo .perfume-media__fallback { display: none; }
 .perfume-media.is-broken img.perfume-media__img { display: none; }
 .perfume-media.is-broken .perfume-media__fallback { display: block; }
 
-/* Small fixed-size frames */
 .perfume-media--sm,
 .perfume-media--xs {
   --media-pad: 8%;
@@ -704,7 +657,6 @@ img.perfume-media__img { mix-blend-mode: multiply; }
 .perfume-media--sm { width: 44px; height: 52px; }
 .perfume-media--xs { width: 40px; height: 40px; }
 
-/* ---------- Two-column: reviews + sidebar ---------- */
 .two-col { display: grid; grid-template-columns: 1fr 340px; gap: 28px; align-items: start; }
 
 .review-list { display: grid; gap: 14px; }
@@ -806,9 +758,6 @@ img.perfume-media__img { mix-blend-mode: multiply; }
 .reviewer .btn { margin-left: auto; }
 .btn--follow[aria-pressed="true"] { background: var(--color-surface-muted); color: var(--color-text-2); border-color: var(--color-border); }
 
-/* ---------- Notes ---------- */
-
-/* ---------- Footer ---------- */
 .footer { background: var(--color-surface); border-top: 1px solid var(--color-border); padding-top: 36px; font-size: 14px; }
 .footer__grid { display: flex; justify-content: space-between; align-items: flex-start; gap: 28px; padding-bottom: 28px; }
 .footer__links { min-width: 160px; }
@@ -827,7 +776,6 @@ img.perfume-media__img { mix-blend-mode: multiply; }
   color: var(--color-muted);
 }
 
-/* ---------- Perfume page (#perfume/<id>) ---------- */
 .perfume-card[data-perfume] { cursor: pointer; }
 .perfume-view { padding-block: 20px 40px; }
 
@@ -875,7 +823,6 @@ img.perfume-media__img { mix-blend-mode: multiply; }
 .pv__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
 .pv__actions .action-btn { flex: 0 0 auto; height: 42px; padding: 0 14px; }
 .pv__actions .action-btn--icon { width: 42px; padding: 0; }
-/* Edit / Delete on a perfume you added (perfume page + My Profile > Added) */
 .owner-confirm { align-self: center; font-size: 13.5px; font-weight: 600; color: var(--color-text-2); }
 .action-btn.is-danger, .social-btn.is-danger { color: var(--color-like); }
 .perfume-card__owner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--color-border); }
@@ -886,7 +833,6 @@ img.perfume-media__img { mix-blend-mode: multiply; }
 .pv__side .panel__title { margin-bottom: 10px; }
 .pv__hint { margin: -6px 0 10px; font-size: 12.5px; color: var(--color-muted); }
 
-/* Pros & cons */
 .verdict__cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .verdict__col h3 { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
 .verdict__col--pros h3 { color: var(--color-up); }
@@ -915,14 +861,12 @@ img.perfume-media__img { mix-blend-mode: multiply; }
 .verdict__vote[aria-pressed="true"] { border-color: var(--color-accent); color: var(--color-accent); background: var(--color-accent-softer); }
 
 
-/* Reviews on the perfume page */
 .pv__reviews { display: grid; }
 .pv-review { padding-block: 14px; border-top: 1px solid var(--color-border); }
 .pv-review:first-child { border-top: 0; padding-top: 0; }
 .pv-review .review__actions { border-top: 0; padding-top: 0; }
 .pv-review__score { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
 
-/* Meters & bars */
 .meter + .meter { margin-top: 12px; }
 .meter__top { display: flex; justify-content: space-between; font-size: 13.5px; margin-bottom: 6px; color: var(--color-text-2); }
 .meter__top strong { color: var(--color-text); font-weight: 600; }
@@ -936,7 +880,6 @@ img.perfume-media__img { mix-blend-mode: multiply; }
 .pv__hint--after { margin: 10px 0 0; }
 .pv__hint--after strong { color: var(--color-text); }
 
-/* Your vote chips (performance / when to wear) */
 .vote-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 8px; }
 .vote-row__label { margin-right: 2px; font-size: 11.5px; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .vote-chip {
@@ -949,7 +892,6 @@ img.perfume-media__img { mix-blend-mode: multiply; }
 .vote-chip[aria-pressed="true"] { background: var(--color-accent); border-color: var(--color-accent); color: #fff; }
 .pv__bars + .vote-row { margin-top: 10px; }
 
-/* Write a review */
 .composer {
   display: grid; gap: 10px;
   padding: 14px; margin-bottom: 16px;
@@ -963,7 +905,6 @@ img.perfume-media__img { mix-blend-mode: multiply; }
 .star-input__star { padding: 2px; border: 0; background: none; color: #d3d7d5; transition: color 0.15s, transform 0.15s; }
 .star-input__star svg { width: 28px; height: 28px; }
 .star-input__star.is-on { color: var(--color-star); }
-/* hover preview: the hovered star and every star to its left */
 .star-input:hover .star-input__star { color: #d3d7d5; }
 .star-input .star-input__star:hover,
 .star-input .star-input__star:hover ~ .star-input__star { color: var(--color-star); }
@@ -987,7 +928,6 @@ img.perfume-media__img { mix-blend-mode: multiply; }
 
 .pv__similar { margin-top: 32px; }
 
-/* ---------- Accounts: header menu ---------- */
 .header__account { display: flex; align-items: center; gap: 8px; }
 .account { position: relative; }
 .account__btn {
@@ -1018,7 +958,6 @@ img.perfume-media__img { mix-blend-mode: multiply; }
 .avatar--xl { width: 84px; height: 84px; font-size: 28px; }
 .snapshot__actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
-/* ---------- Forms ---------- */
 .field { display: grid; gap: 5px; margin: 0; padding: 0; border: 0; min-width: 0; }
 .field__label { font-size: 13.5px; font-weight: 600; color: var(--color-text); padding: 0; }
 .field__optional { font-weight: 400; color: var(--color-muted); }
@@ -1039,7 +978,6 @@ img.perfume-media__img { mix-blend-mode: multiply; }
 .form-error { min-height: 1.2em; font-size: 13.5px; font-weight: 500; color: var(--color-like); }
 .form-error:empty { min-height: 0; }
 
-/* ---------- Sign up / log in window ---------- */
 html.modal-open { overflow: hidden; }
 .modal { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 16px; }
 .modal__backdrop { position: absolute; inset: 0; background: rgba(20, 28, 24, 0.45); animation: fadeIn 0.2s; }
@@ -1064,7 +1002,6 @@ html.modal-open { overflow: hidden; }
 .modal__switch { text-align: center; font-size: 14px; color: var(--color-muted); }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* ---------- Join prompts & empty states ---------- */
 .rating--empty { font-size: 13px; color: var(--color-muted); }
 .join-prompt {
   display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
@@ -1078,7 +1015,6 @@ html.modal-open { overflow: hidden; }
 .pv__added a, .review__name-link { color: var(--color-accent); font-weight: 600; }
 .pv__added a:hover, .review__name-link:hover { text-decoration: underline; }
 
-/* ---------- Profile page ---------- */
 .profile-head {
   display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap;
   padding: 22px; margin-bottom: 16px;
@@ -1094,7 +1030,6 @@ html.modal-open { overflow: hidden; }
 .profile-head__actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .profile-edit { display: grid; gap: 10px; max-width: 460px; }
 .profile-edit__actions { display: flex; gap: 8px; }
-/* Delete your account (profile > Edit profile) */
 .profile-edit__danger { margin-top: 10px; }
 .link.is-danger { color: var(--color-like); }
 .account-delete { display: grid; gap: 10px; max-width: 460px; margin-top: 12px; padding: 14px 16px; border: 1px solid var(--color-like); border-radius: var(--radius); background: var(--color-surface); font-size: 14px; color: var(--color-text-2); }
@@ -1122,7 +1057,6 @@ html.modal-open { overflow: hidden; }
 .profile-review__meta strong { color: var(--color-text); }
 .profile-review p { color: var(--color-text-2); }
 
-/* ---------- Add a perfume ---------- */
 .add { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
 .add__title { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
 .add__form { display: grid; gap: 16px; margin-top: 18px; }
@@ -1154,7 +1088,6 @@ html.modal-open { overflow: hidden; }
 }
 .notice strong { display: block; color: var(--color-text); margin-bottom: 2px; }
 
-/* ---------- Members, follows & activity ---------- */
 .member-link { color: var(--color-text); font-weight: 600; }
 .member-link:hover { color: var(--color-accent); text-decoration: underline; }
 .activity__perfume { color: var(--color-text); font-weight: 600; }
@@ -1179,7 +1112,6 @@ html.modal-open { overflow: hidden; }
 .suggest-group { padding: 8px 8px 4px; font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-muted); }
 .suggest-item .avatar { width: 36px; height: 36px; }
 
-/* Profile: follow stats & member lists */
 .profile-head__stats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .profile-stat {
   display: inline-flex; align-items: baseline; gap: 5px; padding: 4px 10px;
@@ -1195,7 +1127,6 @@ html.modal-open { overflow: hidden; }
 .member-row__info { flex: 1; min-width: 0; }
 .member-row__meta { font-size: 13px; color: var(--color-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* All reviews page */
 .all-reviews .section-title { font-size: 26px; }
 .all-reviews__controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 18px; }
 .all-reviews__ratings { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1203,7 +1134,6 @@ html.modal-open { overflow: hidden; }
 .all-reviews .review-list { max-width: 820px; }
 .all-reviews__more { display: flex; justify-content: center; max-width: 820px; margin-top: 18px; }
 
-/* ---------- Review trends chart ---------- */
 .trends-panel { padding: 20px; }
 .trends { position: relative; }
 .trends__kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
@@ -1250,7 +1180,6 @@ html.modal-open { overflow: hidden; }
 .trends__table .is-text { text-align: left; }
 .trends__table thead th { position: sticky; top: 0; background: var(--color-surface-muted); font-weight: 600; }
 
-/* ---------- Groups ---------- */
 .section-title--page { font-size: 26px; }
 .group-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .group-grid--teaser { grid-template-columns: repeat(4, 1fr); }
@@ -1284,10 +1213,8 @@ html.modal-open { overflow: hidden; }
 .group-head__meta strong { color: var(--color-text); }
 .group-head__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .group-head__actions .owner-confirm { flex-basis: 100%; text-align: right; }
-/* editing your own post / reply in place */
 .gpost-edit { margin: 4px 0 10px; }
 .greply .gpost-edit { margin: 6px 0; }
-/* Edit + Delete sit together on the right of a post's actions */
 .gpost .review__actions [data-post-edit] { margin-left: auto; }
 .gpost .review__actions [data-post-edit] + .social-btn { margin-left: 0; }
 .group-about { font-size: 14px; color: var(--color-text-2); margin-bottom: 10px; }
@@ -1337,7 +1264,6 @@ html.modal-open { overflow: hidden; }
 .social-btn[data-post-like][aria-pressed="true"] svg { fill: currentColor; }
 .check-chip input[type=radio] { position: absolute; opacity: 0; pointer-events: none; }
 
-/* ---------- Messenger ---------- */
 .messenger-page { padding-bottom: 24px; }
 .messenger {
   display: grid; grid-template-columns: 320px 1fr;
@@ -1422,7 +1348,6 @@ html.modal-open { overflow: hidden; }
 .thread__empty svg { width: 44px; height: 44px; margin-bottom: 6px; color: var(--color-border-strong); }
 .thread__empty strong { color: var(--color-text); font-size: 16px; }
 
-/* New-message popups */
 .chat-popups { position: fixed; right: 20px; bottom: 20px; z-index: 95; display: grid; gap: 10px; width: min(340px, calc(100vw - 32px)); }
 .chat-popup {
   display: flex; align-items: center; gap: 10px; padding: 12px 12px 12px 14px;
@@ -1437,7 +1362,6 @@ html.modal-open { overflow: hidden; }
 .chat-popup__close:hover { background: var(--color-surface-muted); }
 .chat-popup__close svg { width: 15px; height: 15px; }
 
-/* ---------- Notes canvas ---------- */
 .notes-canvas { display: block; width: 100%; height: 140px; }
 .notes-canvas--tall { height: 230px; }
 .notes-panel .panel__title { margin-bottom: 6px; }
@@ -1459,7 +1383,6 @@ html.modal-open { overflow: hidden; }
 .notes-first__preview .notes-canvas__empty { display: none; }
 .notes-first__foot { display: flex; align-items: center; gap: 8px; }
 
-/* ---------- Info pages (About, Help center, Privacy) ---------- */
 .info-page { max-width: 820px; }
 .info-card { padding: clamp(22px, 4vw, 36px); }
 .info-card__eyebrow { font-size: 12.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-accent); }
@@ -1471,7 +1394,6 @@ html.modal-open { overflow: hidden; }
 .info-points li { display: grid; gap: 4px; padding: 14px; border-radius: var(--radius); background: var(--color-surface-muted); }
 .info-points strong { font-size: 14.5px; }
 .info-points span { font-size: 13.5px; color: var(--color-text-2); }
-/* Privacy page: the sections flow in two columns (CSS multi-column), one on narrow screens */
 .info-columns { columns: 2 260px; column-gap: 36px; column-rule: 1px solid var(--color-border); margin-top: 8px; }
 .info-columns .info-section { break-inside: avoid; }
 .info-columns .info-section:first-child { margin-top: 12px; }
@@ -1484,7 +1406,6 @@ html.modal-open { overflow: hidden; }
 .info-form__foot .composer__error { flex: 1; }
 .info-form__done { margin-top: 20px; padding: 14px 16px; border: 1px solid var(--color-accent); border-radius: var(--radius-sm); background: var(--color-accent-softer); color: var(--color-accent-hover); font-weight: 600; }
 
-/* ---------- Toast ---------- */
 .toast {
   position: fixed;
   left: 50%;
@@ -1501,7 +1422,6 @@ html.modal-open { overflow: hidden; }
   animation: slideIn 0.3s var(--ease);
 }
 
-/* ---------- Animations ---------- */
 @keyframes pulse {
   0% { opacity: 0.7; transform: scale(0.6); }
   100% { opacity: 0; transform: scale(1.6); }
@@ -1520,7 +1440,6 @@ html.modal-open { overflow: hidden; }
   html { scroll-behavior: auto; }
 }
 
-/* ---------- Responsive ---------- */
 @media (max-width: 1180px) {
   .perfume-grid { grid-template-columns: repeat(4, 1fr); }
   .carousel { --per-view: 4; }
@@ -1575,7 +1494,7 @@ html.modal-open { overflow: hidden; }
   .snapshot__online { display: none; }
   .sidebar { grid-template-columns: 1fr; }
   .perfume-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .carousel { --per-view: 2.2; --gap: 10px; }   /* peek at the next card to hint swiping */
+  .carousel { --per-view: 2.2; --gap: 10px; }
   .carousel-controls .icon-btn { display: none; }
   .carousel-controls__status { min-width: 0; text-align: left; }
   .perfume-card__media { height: 130px; }

@@ -1,7 +1,3 @@
-// The built-in perfume catalog. Seeded into MongoDB on server start.
-// [brand, name, scent families (space separated), main notes (comma separated)]
-// brand "" = the brand was not part of the photo name.
-// Photos live in public/images/perfumes/<slug>.jpg
 module.exports = [
   ["Dior","Miss Dior","floral musk","Rose, Peony, Musk"],
   ["Dior","Miss Dior Blooming Bouquet","floral musk","Peony, Rose, White Musk"],

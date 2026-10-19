@@ -1,10 +1,9 @@
 const mongoose = require("mongoose");
 
-// A perfume someone liked (the heart button)
 const likeSchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    perfume: { type: String, required: true, index: true },   // perfume slug
+    perfume: { type: String, required: true, index: true },
   },
   { timestamps: true }
 );

@@ -7,12 +7,11 @@ const userSchema = new mongoose.Schema(
     displayName: { type: String, required: true, trim: true },
     passwordHash: { type: String, required: true },
     bio: { type: String, default: "", trim: true },
-    seeded: { type: Boolean, default: false },   // demo community member (scripts/seed-community.js)
+    seeded: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
-// What other people (and the browser) are allowed to see
 userSchema.methods.toPublic = function () {
   return {
     username: this.username,

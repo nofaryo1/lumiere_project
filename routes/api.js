@@ -1,4 +1,3 @@
-// REST API (mounted at /api): each URL is handled by a controller in controllers/
 const express = require("express");
 const { loadUser, requireUser, sameOrigin, rateLimit } = require("../lib/auth");
 const { imageBody } = require("../lib/uploads");
@@ -79,10 +78,9 @@ router.get("/messages/unread", requireUser, messages.unread);
 router.get("/stats/review-trends", stats.reviewTrends);
 router.post("/contact", contactLimiter, contact.create);
 
-/* ---------- Fallbacks ---------- */
 router.use((req, res) => res.status(404).json({ error: "Not found." }));
 
-// eslint-disable-next-line no-unused-vars
+// Express recognizes an error handler by its 4 arguments, so `next` must stay even though it is unused
 router.use((err, req, res, next) => {
   if (err.type === "entity.too.large") return res.status(413).json({ error: "That file is too large (max 5 MB)." });
   if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid request." });

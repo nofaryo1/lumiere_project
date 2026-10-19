@@ -1,11 +1,5 @@
-// Gives the demo community members (see seed-community.js) group activity:
-// memberships, posts, replies and likes over the past year.
-//
 //   npm run seed:groups              -> (re)builds demo group activity
 //   npm run seed:groups -- --remove  -> removes demo group activity
-//
-// Only demo members' memberships/posts are replaced; real members' posts
-// and memberships are kept.
 require("dotenv").config({ quiet: true });
 const mongoose = require("mongoose");
 
@@ -22,7 +16,6 @@ const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.now();
 const YEAR_AGO = NOW - 365 * DAY;
 
-/* ---------- Deterministic randomness ---------- */
 function mulberry32(seed) {
   return () => {
     seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
@@ -35,7 +28,6 @@ const rand = mulberry32(777);
 const pick = (arr) => arr[Math.floor(rand() * arr.length)];
 const between = (a, b) => a + Math.floor(rand() * (b - a + 1));
 
-/* ---------- Which perfumes each group talks about ---------- */
 const NICHE = ["Byredo", "Xerjoff", "Amouage", "Diptyque", "Maison Margiela", "Jo Malone", "Penhaligon's", "Bortnikoff", "Tom Ford", "Guerlain"];
 const ARABIAN = ["Lattafa", "Haramain", "Armaf"];
 const BUDGET = ["Zara", "Armaf", "Farmasi", "Nautica", "Lattafa", "Calvin Klein", "Joop", "4711", "Bruno Banani", "The Man Company"];
@@ -55,7 +47,6 @@ function groupPerfumes(group, perfumes) {
   }
 }
 
-/* ---------- Post & reply text ---------- */
 const OPINION = ["The dry down is gorgeous.", "Got two compliments already.", "It lasts all day on me.", "Very different from what I expected.",
   "Smells way more expensive than it is.", "My partner keeps stealing it.", "Not sure about the opening, but it gets better."];
 const ADJ = ["lighter", "sweeter", "fresher", "darker", "more unique", "cheaper", "more long-lasting"];
@@ -113,7 +104,6 @@ function seasonFactor(group, time) {
   return 1 + 0.75 * Math.cos((2 * Math.PI * (day - peak)) / 365);
 }
 
-// A post date after `from`, weighted toward recent months and the group's season
 function postTime(group, from) {
   const start = Math.max(from, YEAR_AGO);
   for (let tries = 0; tries < 20; tries++) {
@@ -123,13 +113,11 @@ function postTime(group, from) {
   return start + rand() * (NOW - start);
 }
 
-/* ---------- Remove demo group activity ---------- */
 async function removeDemoGroupData(ids) {
   if (!ids.length) return;
   const demoPosts = await GroupPost.find({ user: { $in: ids }, parent: null }).distinct("_id");
   await GroupPost.deleteMany({ $or: [{ user: { $in: ids } }, { parent: { $in: demoPosts } }] });
   await GroupMember.deleteMany({ user: { $in: ids } });
-  // real posts: drop demo likes and recount replies
   await GroupPost.updateMany({ likedBy: { $in: ids } }, [
     { $set: { likedBy: { $setDifference: ["$likedBy", ids] } } },
     { $set: { likesCount: { $size: "$likedBy" } } },
@@ -164,11 +152,9 @@ async function main() {
   const pools = new Map(groups.map((g) => [String(g._id), groupPerfumes(g, perfumes)]));
   const tagsOf = new Map(perfumes.map((p) => [p.slug, p]));
 
-  // what each member likes, based on their reviews
   const reviewed = await Review.aggregate([{ $match: { user: { $in: ids } } }, { $group: { _id: "$user", perfumes: { $push: "$perfume" } } }]);
   const tasteOf = new Map(reviewed.map((r) => [String(r._id), r.perfumes.map((s) => tagsOf.get(s)).filter(Boolean)]));
 
-  // ---- memberships ----
   const members = [];
   const membersOf = new Map(groups.map((g) => [String(g._id), []]));
   for (const u of users) {
@@ -203,14 +189,12 @@ async function main() {
     }
   }
 
-  // ---- posts ----
   const posts = [];
   const replies = [];
   for (const m of members) {
     const g = groups.find((x) => x._id.equals(m.group));
     const pool = pools.get(String(g._id));
     if (!pool.length) continue;
-    // members post at a steady pace: longer membership -> more posts
     const years = Math.max(0.05, (NOW - Math.max(m.createdAt.getTime(), YEAR_AGO)) / (365 * DAY));
     const pace = m._activity === 0 ? (rand() < 0.3 ? 1 : 0) : between(1, Math.min(12, 2 + Math.floor(m._activity / 4)));
     const n = Math.round(pace * years + (rand() < (pace * years) % 1 ? 1 : 0));
@@ -231,7 +215,6 @@ async function main() {
 
       const replyCount = rand() < 0.35 ? 0 : rand() < 0.85 ? between(1, 4) : between(5, 12);
       for (let r = 0; r < replyCount; r++) {
-        // replies come within ~10 days of the post (never in the future)
         const at = t + Math.pow(rand(), 2) * Math.min(10 * DAY, NOW - t - 60 * 1000);
         const author = pick(groupMembers);
         const replyLikes = rand() < 0.6 ? [] : [...new Set(Array.from({ length: between(1, 6) }, () => pick(groupMembers)))].filter((id) => !id.equals(author));

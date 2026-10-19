@@ -1,16 +1,13 @@
-// Messenger history over REST (live delivery is over Socket.io, see lib/realtime.js)
 const User = require("../models/User");
 const Message = require("../models/Message");
 const chat = require("../lib/chat");
 const realtime = require("../lib/realtime");
 const { limitParam } = require("../lib/helpers");
 
-/* ---------- Messenger (history over REST; live delivery over Socket.io, see lib/realtime.js) ---------- */
 exports.conversations = async (req, res) => {
   res.json({ conversations: await chat.listConversations(req.user, realtime.isOnline), unread: await chat.unreadCount(req.user) });
 };
 
-// Open (or start) a chat with someone. `withMessages` also returns the latest messages (saves a round trip).
 exports.open = async (req, res) => {
   const other = await User.findOne({ username: String(req.body.username || "").toLowerCase() });
   if (!other) return res.status(404).json({ error: "User not found." });
@@ -27,7 +24,6 @@ exports.open = async (req, res) => {
   });
 };
 
-// Messages, newest last. `before` (ISO date) loads older ones.
 exports.messages = async (req, res) => {
   const conversation = await chat.myConversation(req.user, req.params.id);
   if (!conversation) return res.status(404).json({ error: "Conversation not found." });

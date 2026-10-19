@@ -6,7 +6,6 @@
   <title>LUMIERE — Fragrance discovery & community</title>
   <meta name="description" content="LUMIERE is a community for discovering, reviewing and sharing fragrances." />
 
-  <!-- the font is part of the project (see @font-face in style.css); start loading it right away -->
   <link rel="preload" href="/fonts/plus-jakarta-sans-latin.woff2" as="font" type="font/woff2" crossorigin />
 
   <link rel="stylesheet" href="/css/style.css" />
@@ -15,13 +14,12 @@
        has drawn that page, so it doesn't flash first. */
     if (/^#(?:(?:perfume|profile|group|messages|all-reviews|edit-perfume|edit-group)\/.+|messages|groups|members|create-group|add-perfume|all-reviews|about|privacy|help)$/.test(location.hash)) {
       document.documentElement.classList.add("is-opening-view");
-      setTimeout(function () { document.documentElement.classList.remove("is-opening-view"); }, 5000);   // never stay hidden
+      setTimeout(function () { document.documentElement.classList.remove("is-opening-view"); }, 5000);
     }
   </script>
 </head>
 <body>
 
-  <!-- ============ Header ============ -->
   <header class="header">
     <div class="container header__inner">
       <a href="/" class="logo" aria-label="LUMIERE home">
@@ -42,19 +40,16 @@
         <a href="#reviews" class="nav__link is-locked" aria-disabled="" title="Join the community to unlock" data-members-only><svg class="nav__lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Reviews</a>
         <a href="#messages" class="nav__link is-locked" aria-disabled="" title="Join the community to unlock" data-members-only data-messages-link><svg class="nav__lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Messages <span class="badge" hidden>0</span></a>
         <div class="nav__auth-mobile" id="navAuthMobile">
-          <!-- Rendered by main.js (log in / sign up, or your account links) -->
         </div>
       </nav>
 
       <div class="header__actions">
         <div class="header__account" id="headerAccount">
-          <!-- Re-rendered by main.js (log in / sign up, or your account menu) -->
           <button class="btn btn--ghost btn--sm header__login" data-auth="login">Log in</button>
           <button class="btn btn--primary btn--sm header__signup" data-auth="signup">Sign up</button>
         </div>
         <button class="icon-btn nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="nav">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-          <!-- unread messages, for when the Messages link is folded into this menu -->
           <span class="badge nav-toggle__badge" data-unread-badge aria-hidden="true" hidden>0</span>
         </button>
       </div>
@@ -65,8 +60,8 @@
        so nothing shifts on refresh. main.js confirms it once /api/auth/me answers. */
     (function () {
       var account = null;
-      try { account = localStorage.getItem("lumiere:account"); } catch (e) { /* storage unavailable */ }
-      if (!account) return;   // the markup above is already the signed-out header
+      try { account = localStorage.getItem("lumiere:account"); } catch (e) {}
+      if (!account) return;
       document.documentElement.classList.add("is-member");
       document.getElementById("headerAccount").innerHTML = account;
       document.querySelectorAll("[data-members-only]").forEach(function (link) {
@@ -79,10 +74,7 @@
 
   <main>
 
-    <!-- ============ Search hero ============ -->
-    <!-- ============ Video banner: React component (public/js/react/video-banner.js) ============ -->
     <section class="video-section" aria-label="Welcome video">
-      <!-- placeholder with the banner's size, so nothing below jumps when React mounts -->
       <div class="container" id="videoBannerRoot"><div class="video-banner" aria-hidden="true"></div></div>
     </section>
 
@@ -109,7 +101,6 @@
           </div>
         </div>
 
-        <!-- Invisible (but keeping its size) until the login state is known; main.js then shows the welcome or the member search -->
         <aside class="snapshot is-pending" id="snapshot" aria-label="Community snapshot" aria-busy="true">
           <div class="snapshot__head">
             <span class="live-dot" aria-hidden="true"></span>
@@ -130,7 +121,6 @@
       </div>
     </section>
 
-    <!-- ============ Trending ============ -->
     <section class="section" id="trending">
       <div class="container">
         <div class="section-head">
@@ -157,10 +147,8 @@
         </div>
 
         <div class="filter-bar" id="filterBar" role="group" aria-label="Filter by scent family">
-          <!-- Rendered by main.js -->
         </div>
 
-        <!-- Refine by brand, notes and rating (combines with the scent family above and the search) -->
         <div class="filter-fields" id="perfumeFilters" role="group" aria-label="Refine perfumes">
           <label class="filter-field">
             <span>Brand</span>
@@ -168,7 +156,6 @@
           </label>
           <div class="filter-field">
             <label for="filterNotes">Notes</label>
-            <!-- suggestions open right under the field (main.js, jQuery) -->
             <div class="filter-field__control">
               <input id="filterNotes" type="search" placeholder="e.g. vanilla, oud" autocomplete="off"
                      role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="notesSuggest" />
@@ -183,13 +170,11 @@
         </div>
 
         <div class="carousel" id="trendingGrid" tabindex="0" aria-label="Trending perfumes, scroll sideways for more">
-          <!-- Rendered by main.js -->
         </div>
         <p class="empty-state" id="trendingEmpty" hidden>No perfumes match this filter yet.</p>
       </div>
     </section>
 
-    <!-- ============ Reviews + Community activity ============ -->
     <section class="section section--alt">
       <div class="container two-col">
         <div id="reviews">
@@ -201,7 +186,6 @@
             <a href="#all-reviews" class="link">See all reviews</a>
           </div>
           <div class="review-list" id="reviewList">
-            <!-- Rendered by main.js -->
           </div>
         </div>
 
@@ -216,17 +200,14 @@
               <button role="tab" data-scope="all" aria-selected="true">Everyone</button>
             </div>
             <ul class="activity" id="activityFeed">
-              <!-- Rendered by main.js -->
             </ul>
           </div>
 
-          <!-- "Top reviewers" panel: React component (public/js/react/top-reviewers.js) -->
           <div id="topReviewersRoot"></div>
         </aside>
       </div>
     </section>
 
-    <!-- ============ Discussion groups ============ -->
     <section class="section" id="groups-home">
       <div class="container">
         <div class="section-head">
@@ -242,7 +223,6 @@
       </div>
     </section>
 
-    <!-- ============ Review trends (D3 chart) ============ -->
     <section class="section section--alt" id="insights">
       <div class="container">
         <div class="section-head">
@@ -257,7 +237,6 @@
       </div>
     </section>
 
-    <!-- ============ Group posts per month (D3 chart) ============ -->
     <section class="section" id="group-activity">
       <div class="container">
         <div class="section-head">
@@ -279,9 +258,9 @@
        so the restored scroll position doesn't jump while their data loads. */
     (function () {
       var root = document.documentElement, saved = null;
-      if (root.classList.contains("is-member")) document.getElementById("activityTabs").hidden = false;   // members see Everyone / Following
+      if (root.classList.contains("is-member")) document.getElementById("activityTabs").hidden = false;
       if (root.classList.contains("is-opening-view")) return;
-      try { saved = JSON.parse(sessionStorage.getItem("lumiere:layout")); } catch (e) { /* storage unavailable */ }
+      try { saved = JSON.parse(sessionStorage.getItem("lumiere:layout")); } catch (e) {}
       if (!saved || saved.w !== window.innerWidth || saved.member !== root.classList.contains("is-member")) return;
       Object.keys(saved.heights).forEach(function (id) {
         var el = document.getElementById(id);
@@ -290,10 +269,8 @@
     })();
   </script>
 
-  <!-- ============ Perfume page (rendered by main.js) ============ -->
   <div class="perfume-view" id="perfumeView" hidden></div>
 
-  <!-- ============ Footer ============ -->
   <footer class="footer">
     <div class="container footer__grid">
       <div class="footer__brand">
@@ -315,10 +292,8 @@
     </div>
   </footer>
 
-  <!-- Sign up / log in window (rendered by main.js) -->
   <div class="modal" id="authModal" hidden></div>
 
-  <!-- Live chat popups (new messages while you're elsewhere on the site) -->
   <div class="chat-popups" id="chatPopups" aria-live="polite"></div>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>

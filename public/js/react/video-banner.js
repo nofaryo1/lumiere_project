@@ -1,12 +1,3 @@
-/* =========================================================
-   LUMIERE — Homepage video banner (React)
-   Rendered with ReactDOM.createRoot into #videoBannerRoot,
-   above the "Find your next favorite fragrance" section.
-   Plays /videos/video.mp4 muted on a loop with no controls;
-   pauses when scrolled out of view; shows a still frame instead
-   of autoplaying for reduced-motion or data-saver.
-   Written with React.createElement (no build step / JSX).
-   ========================================================= */
 (function () {
   "use strict";
 
@@ -27,7 +18,6 @@
     const [ready, setReady] = useState(false);
     const [failed, setFailed] = useState(false);
 
-    // Play only while the banner is on screen
     useEffect(() => {
       const video = videoRef.current;
       if (!video || !autoplay.current) return undefined;
@@ -40,7 +30,7 @@
       return () => observer.disconnect();
     }, []);
 
-    if (failed) return null;   // no video -> the homepage simply starts with the hero
+    if (failed) return null;
 
     return h("div", { className: `video-banner${ready ? " is-ready" : ""}` },
       h("video", {
@@ -50,7 +40,6 @@
         muted: true,
         loop: true,
         playsInline: true,
-        // without autoplay, still load the first frame so the banner isn't empty
         preload: autoplay.current ? "metadata" : "auto",
         "aria-label": "LUMIERE community video",
         onLoadedData: () => setReady(true),

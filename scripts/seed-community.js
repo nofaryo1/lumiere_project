@@ -1,11 +1,5 @@
-// Creates 2,000 demo community members with reviews, likes and follows.
-//
 //   npm run seed:community            -> (re)builds the demo community in the "lumiere" database
 //   npm run seed:community -- --remove -> removes all demo members and everything they created
-//
-// Demo members are marked `seeded: true`. Running the script again replaces
-// them; real accounts and their activity are never touched. Demo members
-// can't log in (their password is a random secret that isn't stored).
 require("dotenv").config({ quiet: true });
 const crypto = require("crypto");
 const mongoose = require("mongoose");
@@ -23,7 +17,6 @@ const MEMBERS = 2000;
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.now();
 
-/* ---------- Deterministic randomness (same community every run) ---------- */
 function mulberry32(seed) {
   return () => {
     seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
@@ -42,7 +35,6 @@ function weightedPick(items, weights, total) {
   return items[items.length - 1];
 }
 
-/* ---------- Names & bios ---------- */
 const FIRST = ["Noa", "Maya", "Liam", "Emma", "Yael", "Daniel", "Sofia", "Omer", "Lea", "Ethan", "Tamar", "Lucas", "Chloe", "Itai", "Mia",
   "Noah", "Shira", "Leo", "Ava", "Ariel", "Zoe", "Jonathan", "Camille", "Adam", "Nina", "Eitan", "Clara", "Amit", "Lina", "Gabriel",
   "Hila", "Mateo", "Ella", "Yoni", "Isabel", "Ori", "Julia", "Nadav", "Alice", "Ben", "Rotem", "Hugo", "Anna", "Tom", "Inès",
@@ -63,7 +55,6 @@ const BIOS = ["Woody scents all year round.", "Vanilla addict.", "Collector of n
   "Mostly designer, a little niche.", "Office-safe scents are my specialty.", "Compliment-getters only.", "Fragrance student, forever."];
 const PLACES = ["Tel Aviv", "Paris", "London", "Haifa", "Berlin", "Milan", "New York", "Jerusalem", "Barcelona", "Lisbon", "Toronto", "Amsterdam"];
 
-/* ---------- Review text ---------- */
 const OPEN = {
   5: ["Absolutely love this one.", "A true favorite of mine.", "One of the best perfumes I own.", "Instant compliment magnet.",
       "Blind bought it and zero regrets.", "This has become my signature.", "I can't stop wearing it."],
@@ -113,8 +104,6 @@ function reviewText(perfume, rating) {
   return parts.join(" ");
 }
 
-/* ---------- Perfume popularity & seasons ---------- */
-// Front-runners have close popularity but different seasons, so the lead changes over the year
 const FAVORITES = ["dior-sauvage", "dolce-gabbana-light-blue", "lattafa-yara", "chanel-bleu-de-chanel", "armani-acqua-di-gio",
   "versace-eros", "chanel-no-5", "chanel-coco-mademoiselle", "dior-jadore", "tom-ford-ombre-leather", "byredo-gypsy-water", "xerjoff-naxos"];
 const SEASON_PEAK = { fresh: 196, citrus: 196, floral: 105, woody: 310, amber: 15, gourmand: 15, spicy: 340, musk: 120 };
@@ -125,7 +114,7 @@ function popularity(perfumes) {
   const order = [...FAVORITES.filter((s) => perfumes.some((p) => p.slug === s)), ...rest];
   const weight = {};
   order.forEach((slug, i) => {
-    weight[slug] = i < 4 ? 30 - i * 1.2 : 1 / Math.pow(i + 2, 0.75) * 40;   // close race at the top
+    weight[slug] = i < 4 ? 30 - i * 1.2 : 1 / Math.pow(i + 2, 0.75) * 40;
   });
   return weight;
 }
@@ -138,14 +127,12 @@ function seasonFactor(perfume, time) {
   return 1 + amp * Math.cos((2 * Math.PI * (day - peak)) / 365);
 }
 
-/* ---------- Main ---------- */
 async function removeDemo() {
   const ids = await User.find({ seeded: true }).distinct("_id");
   if (!ids.length) return 0;
   await Review.deleteMany({ user: { $in: ids } });
   await Like.deleteMany({ user: { $in: ids } });
   await Follow.deleteMany({ $or: [{ follower: { $in: ids } }, { following: { $in: ids } }] });
-  // remove their "helpful" votes from real reviews and recount
   await Review.updateMany({ likedBy: { $in: ids } }, [
     { $set: { likedBy: { $setDifference: ["$likedBy", ids] } } },
     { $set: { likesCount: { $size: "$likedBy" } } },
@@ -165,7 +152,7 @@ async function insertInBatches(collection, docs, size = 2000) {
 async function main() {
   await mongoose.connect(process.env.MONGO_URI, { dbName: DB_NAME });
   console.log(`Connected to "${DB_NAME}"`);
-  await Promise.all([User, Perfume, Review, Like, Follow].map((m) => m.init()));   // make sure indexes exist
+  await Promise.all([User, Perfume, Review, Like, Follow].map((m) => m.init()));
 
   const removed = await removeDemo();
   if (removed) console.log(`Removed ${removed} previous demo members`);
@@ -175,7 +162,6 @@ async function main() {
   const perfumes = await Perfume.find({ source: "catalog" }).lean();
   const weight = popularity(perfumes);
 
-  // ---- members ----
   const taken = new Set(await User.distinct("username"));
   const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 12);
   const users = [];
@@ -189,9 +175,9 @@ async function main() {
     for (let n = 2; taken.has(username) || username.length < 3; n++) username = `${base.slice(0, 16)}${n}`;
     taken.add(username);
 
-    const joined = NOW - Math.pow(rand(), 1.2) * 420 * DAY;   // within ~14 months
+    const joined = NOW - Math.pow(rand(), 1.2) * 420 * DAY;
     const r = rand();
-    const level = r < 0.18 ? 0 : r < 0.55 ? 1 : r < 0.85 ? 2 : r < 0.97 ? 3 : 4;   // how active they are
+    const level = r < 0.18 ? 0 : r < 0.55 ? 1 : r < 0.85 ? 2 : r < 0.97 ? 3 : 4;
     users.push({
       _id: new mongoose.Types.ObjectId(),
       username,
@@ -206,10 +192,9 @@ async function main() {
     });
   }
 
-  // ---- reviews ----
   const reviewCount = [0, () => between(1, 3), () => between(4, 11), () => between(12, 26), () => between(27, 55)];
   const reviews = [];
-  const ratedBy = new Map();   // userId -> [{slug, rating}]
+  const ratedBy = new Map();
   const quality = Object.fromEntries(perfumes.map((p) => [p.slug, Math.min(4.7, Math.max(3.3, 4.05 + gauss() * 0.35))]));
   for (const u of users) {
     const n = u._level ? reviewCount[u._level]() : 0;
@@ -234,7 +219,6 @@ async function main() {
     ratedBy.set(u._id, mine);
   }
 
-  // ---- "helpful" votes on reviews (heavy-tailed) ----
   for (const r of reviews) {
     const x = rand();
     let k = x < 0.45 ? between(0, 2) : x < 0.82 ? between(3, 10) : x < 0.96 ? between(11, 30) : between(31, 75);
@@ -248,7 +232,6 @@ async function main() {
     r.likesCount = r.likedBy.length;
   }
 
-  // ---- liked perfumes ----
   const likes = [];
   const allSlugs = perfumes.map((p) => p.slug);
   const likeWeights = allSlugs.map((s) => weight[s]);
@@ -264,7 +247,6 @@ async function main() {
     }
   }
 
-  // ---- follows (active reviewers attract more followers) ----
   const follows = [];
   const influence = users.map((u) => 1 + ratedBy.get(u._id).length * 1.5);
   const influenceTotal = influence.reduce((a, b) => a + b, 0);

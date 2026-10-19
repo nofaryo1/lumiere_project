@@ -1,17 +1,6 @@
-/* =========================================================
-   LUMIERE — Homepage scripts
-   Perfumes, members, reviews, likes and follows come from the
-   Express API (/api) backed by MongoDB.
-   ========================================================= */
-
 (function () {
   "use strict";
 
-  /* =======================================================
-     Data
-     ======================================================= */
-
-  // Scent families used by the trending filters
   const families = [
     { key: "woody", name: "Woody" },
     { key: "floral", name: "Floral" },
@@ -23,7 +12,6 @@
     { key: "gourmand", name: "Gourmand" },
   ];
 
-  // Small stable hash (avatar colors, bottle illustrations)
   function hash(str) {
     let h = 2166136261;
     for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619);
@@ -33,10 +21,8 @@
   const LIQUID = { woody: "#b98a57", floral: "#e7b9b4", fresh: "#cfe0dc", amber: "#d9a85e",
                    citrus: "#f0d98a", musk: "#e6ebe8", spicy: "#c98a5e", gourmand: "#8a5a3b" };
 
-  // Filled from the API (/api/perfumes) when the page loads
   let perfumes = [];
 
-  // Turns an API record + its activity stats into what the page uses
   function buildPerfume(rec, stat = {}) {
     const id = rec.slug;
     const h = hash(id);
@@ -52,18 +38,13 @@
       source: rec.source,
       addedBy: rec.addedBy || null,
       notesAddedBy: rec.notesAddedBy || null,
-      // activity = reviews + likes in that period (drives the Trending tabs)
       score: { week: s.week, month: s.month, all: s.reviews + s.likes },
       change: s.prevWeek >= 5 ? Math.round(((s.week - s.prevWeek) / s.prevWeek) * 100) : 0,
       real: { reviews: s.reviews, ratingSum: s.ratingSum, likes: s.likes },
-      // fallback illustration if there's no photo
       look: { shape: ["rect", "tall", "round"][h % 3], liquid: LIQUID[tags[0]] || "#e3e6e4", cap: "#2b2f2d" },
     };
   }
 
-  /* =======================================================
-     Helpers
-     ======================================================= */
   const $ = (sel, scope = document) => scope.querySelector(sel);
   const $$ = (sel, scope = document) => Array.from(scope.querySelectorAll(sel));
   const byId = (id) => perfumes.find((p) => p.id === id);
@@ -92,7 +73,6 @@
     ["#e6efe9", "#3f6b56"], ["#e4ecf3", "#3d6283"], ["#efe9f3", "#6a4f83"],
     ["#f3ece4", "#83613d"], ["#e9eef0", "#4b5f66"],
   ];
-  // `who` is an author object { initials, tone }
   function avatar(who, size = "") {
     const [bg, fg] = AVATAR_TONES[who.tone % AVATAR_TONES.length];
     return `<span class="avatar ${size}" style="--avatar-bg:${bg};--avatar-fg:${fg}" aria-hidden="true">${escapeHTML(who.initials)}</span>`;
@@ -100,7 +80,6 @@
 
   const initialsOf = (name) => String(name).trim().split(/\s+/).slice(0, 2).map((w) => w[0] || "").join("").toUpperCase() || "?";
 
-  // A member as shown next to reviews, activity, lists
   function authorFromUser(u) {
     return { name: u.displayName, username: u.username, level: "Member", initials: initialsOf(u.displayName), tone: hash(u.username) % 5 };
   }
@@ -117,7 +96,6 @@
     up: '<svg viewBox="0 0 24 24" aria-hidden="true" width="12" height="12"><path d="M7 14l5-5 5 5"/></svg>',
   };
 
-  /* ---------- Bottle thumbnail (fallback product image) ---------- */
   const SHAPES = {
     rect:  { body: '<rect x="13" y="30" width="34" height="42" rx="5"/>', cap: '<rect x="22" y="13" width="16" height="13" rx="2"/>', neck: [26, 25, 8, 6], liquid: 40 },
     tall:  { body: '<rect x="18" y="24" width="24" height="48" rx="4"/>', cap: '<rect x="24" y="7" width="12" height="14" rx="2"/>', neck: [27, 20, 6, 5], liquid: 34 },
@@ -146,10 +124,6 @@
       </svg>`;
   }
 
-  /* ---------- Perfume image (shared by every perfume visual) ----------
-     Always renders the same `.perfume-media` frame; sizing, padding and
-     centering are handled entirely in CSS. Without a photo, or if the
-     photo fails to load, the illustrated bottle is shown instead. */
   function perfumeMedia(p, size = "") {
     const classes = ["perfume-media", size && `perfume-media--${size}`, p.image && "has-photo"]
       .filter(Boolean).join(" ");
@@ -172,9 +146,6 @@
     toast.timer = setTimeout(() => { $toast.prop("hidden", true); }, 2400);
   }
 
-  /* =======================================================
-     Renderers
-     ======================================================= */
   function ratingFor(p) {
     const count = p.real.reviews;
     return { avg: count ? p.real.ratingSum / count : 0, count, reviews: count };
@@ -218,9 +189,8 @@
       </article>`;
   }
 
-  /* ---------- Your own perfumes: Edit / Delete (only the member who added it sees these) ---------- */
   const ownsPerfume = (p) => !!session.user && p.source === "community" && p.addedBy === session.user.username;
-  let confirmingDelete = null;   // slug waiting for "Yes, delete"
+  let confirmingDelete = null;
 
   function ownerButtons(p, cls) {
     if (confirmingDelete === p.id) {
@@ -234,7 +204,6 @@
       <button class="${cls}" data-delete-perfume="${p.id}">Delete</button>`;
   }
 
-  // "Helpful" button on a review (members can't vote on their own)
   function helpfulButton(r) {
     const mine = session.user && r.user && r.user.username === session.user.username;
     return `
@@ -250,7 +219,6 @@
     return `<button class="btn btn--ghost btn--sm btn--follow ${extra}" data-follow="${escapeHTML(username)}" aria-pressed="${on}">${on ? "Following" : "Follow"}</button>`;
   }
 
-  // Review card used on the homepage and the "All reviews" page
   function reviewCard(r) {
     const p = byId(r.perfume);
     if (!p || !r.user) return "";
@@ -311,10 +279,7 @@
       </li>`;
   }
 
-  /* =======================================================
-     Trending: period tabs + family filter + search query
-     ======================================================= */
-  const state = { period: "week", family: "all", query: "", brand: "", notes: "", rating: 0 };   // rating: exact stars (1–5)
+  const state = { period: "week", family: "all", query: "", brand: "", notes: "", rating: 0 };
 
   const PERIOD_LABEL = {
     week: "Most liked and reviewed this week",
@@ -341,14 +306,12 @@
     renderPerfumeFilters();
   }
 
-  /* ---------- Brand / notes / rating filters (combine with the family chips and the search) ---------- */
   const brandKey = (brand) => String(brand || "").trim().replace(/\s+/g, " ").toLowerCase();
   const filterNoteTerms = () => state.notes.toLowerCase().split(",").map((t) => t.trim()).filter(Boolean);
   const hasPerfumeFilters = () => !!(state.brand || filterNoteTerms().length || state.rating);
-  // a perfume's rating in whole stars (average rounded to the nearest star; 0 = not rated yet)
   const starsOf = (p) => { const r = ratingFor(p); return r.count ? Math.min(5, Math.max(1, Math.round(r.avg))) : 0; };
 
-  let noteNames = [];   // every note on LUMIERE right now (for the Notes suggestions)
+  let noteNames = [];
 
   function renderPerfumeFilters() {
     const $brand = jQuery("#filterBrand");
@@ -364,7 +327,6 @@
     const notes = new Map();
     perfumes.forEach((p) => p.notes.forEach((n) => { if (!notes.has(n.toLowerCase())) notes.set(n.toLowerCase(), n); }));
     noteNames = [...notes.values()].sort((a, b) => a.localeCompare(b));
-    // exact star ratings
     jQuery("#filterRating").empty().append(
       jQuery("<option>", { value: "", text: "Any rating" }),
       [5, 4, 3, 2, 1].map((n) => jQuery("<option>", { value: n, text: `${n}★`, selected: state.rating === n })),
@@ -410,8 +372,6 @@
     updateCarousel();
   }
 
-  // Add perfumes this page doesn't know yet (added by another member after it loaded).
-  // Signed-in members get them live; this covers guests and lists that mention a new perfume.
   let perfumeSync = null;
   function syncNewPerfumes() {
     if (perfumeSync) return perfumeSync;
@@ -421,7 +381,7 @@
         fresh.forEach((rec) => perfumes.push(buildPerfume(rec, res.stats[rec.slug])));
         if (fresh.length) { renderFilterBar(); renderTrendingKeepScroll(); }
       })
-      .catch(() => { /* try again next time */ })
+      .catch(() => {})
       .finally(() => { perfumeSync = null; });
     return perfumeSync;
   }
@@ -433,7 +393,6 @@
     updateCarousel();
   }
 
-  /* ---------- Carousel controls (arrows + "1–5 of 100") ---------- */
   function carouselMetrics() {
     const track = $("#trendingGrid");
     const first = track.firstElementChild;
@@ -485,7 +444,6 @@
     renderFilterBar();
     renderTrending();
 
-    // carousel (jQuery)
     const $track = jQuery("#trendingGrid");
     $track.on("scroll", updateCarousel);
     jQuery(window).on("resize", updateCarousel);
@@ -496,7 +454,6 @@
       if (e.key === "ArrowLeft")  { e.preventDefault(); scrollCarousel(-1); }
     });
 
-    // This week / This month / All time
     jQuery("#trendTabs").on("click", "[data-period]", function () {
       jQuery("#trendTabs [role=tab]").attr("aria-selected", "false");
       jQuery(this).attr("aria-selected", "true");
@@ -504,10 +461,8 @@
       renderTrending();
     });
 
-    // scent family chips
     jQuery("#filterBar").on("click", "[data-family]", function () { setFamily(jQuery(this).attr("data-family")); });
 
-    // brand / notes / rating
     const $clear = jQuery("#clearPerfumeFilters");
     const refine = () => { renderTrending(); $clear.prop("hidden", !hasPerfumeFilters() && state.family === "all"); };
     jQuery("#filterBrand").on("change", function () { state.brand = jQuery(this).val(); refine(); });
@@ -522,13 +477,11 @@
 
     jQuery("#trending").on("click", "#clearSearch", () => runSearch(""));
 
-    // guests have no live connection: pick up newly added perfumes when they come back to the tab
     jQuery(document).on("visibilitychange", () => {
       if (document.visibilityState === "visible" && !session.user && perfumes.length) syncNewPerfumes();
     });
   }
 
-  /* ---------- Notes filter: suggestions in a list right under the field (jQuery) ---------- */
   function initNotesSuggest(onChange) {
     const $input = jQuery("#filterNotes");
     const $box = jQuery("#notesSuggest");
@@ -593,9 +546,6 @@
     $box.on("mousedown", "[data-note]", function (e) { e.preventDefault(); choose(jQuery(this).attr("data-note")); });
   }
 
-  /* =======================================================
-     Search with suggestions (header + hero): perfumes + members
-     ======================================================= */
   function closeAllSuggestions() {
     $$(".search-suggest").forEach((s) => { s.hidden = true; s.innerHTML = ""; });
   }
@@ -644,14 +594,13 @@
         membersLoading = !!name;
         render();
         if (!name) { members = []; return; }
-        // members: all accounts in MongoDB (new and demo), closest matches first
         memberTimer = setTimeout(async () => {
           const id = ++memberReq;
           try {
             const res = await api(`/members?search=${encodeURIComponent(name)}&limit=${q.startsWith("@") ? 6 : 4}`);
             if (id === memberReq && input.value.trim() === q) { members = res.users; membersLoading = false; render(); }
           } catch (err) {
-            if (id === memberReq) { membersLoading = false; render(); }   // perfumes still work without member results
+            if (id === memberReq) { membersLoading = false; render(); }
           }
         }, 150);
       };
@@ -686,7 +635,6 @@
         const q = input.value.trim();
         if (chosen) return choose(chosen);
         if (q.startsWith("@") && q.length > 1) {
-          // "@username" + Enter -> open the best matching member
           const res = await api(`/members?search=${encodeURIComponent(q.slice(1))}&limit=1`).catch(() => ({ users: [] }));
           if (res.users[0]) { closeAllSuggestions(); input.blur(); location.hash = `profile/${encodeURIComponent(res.users[0].username)}`; }
           else toast(`No members match “${q}”`);
@@ -704,9 +652,6 @@
       btn.addEventListener("click", () => runSearch(btn.dataset.query)));
   }
 
-  /* =======================================================
-     Social: likes, follows, helpful votes, share
-     ======================================================= */
   function initSocial() {
     document.addEventListener("click", (e) => {
       const follow = e.target.closest("[data-follow]");
@@ -745,9 +690,6 @@
     });
   }
 
-  /* =======================================================
-     Homepage community: popular reviews, activity, top reviewers
-     ======================================================= */
   let activityScope = "all";
   let popularReviews = [];
 
@@ -762,13 +704,11 @@
     }
   }
 
-  // Avatars in the welcome box. (The "Top reviewers" panel itself is a
-  // React component: public/js/react/top-reviewers.js)
   async function loadTopReviewers() {
     try {
       const res = await api("/members/top?limit=5");
       $("#onlineAvatars").innerHTML = res.users.map((u) => avatar(authorFromUser(u))).join("");
-    } catch (err) { /* stays empty */ }
+    } catch (err) {}
   }
 
   function renderActivityTabs() {
@@ -804,7 +744,6 @@
     });
   }
 
-  // Signed in -> show people you follow by default (if you follow anyone)
   function refreshCommunity() {
     activityScope = session.user && session.following.size ? "following" : "all";
     loadActivity();
@@ -812,7 +751,6 @@
     loadTopReviewers();
   }
 
-  /* ---------- Mobile navigation ---------- */
   function initNav() {
     const toggle = $("#navToggle");
     const nav = $("#nav");
@@ -826,11 +764,6 @@
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") setOpen(false); });
   }
 
-  /* =======================================================
-     Perfume page data: default pros & cons and performance/season
-     votes are generated per perfume (scaled to its real review count);
-     reviews, ratings and likes are real.
-     ======================================================= */
   const PRO_POOL = {
     general: ["Gets lots of compliments", "Smells expensive", "Unique — not generic",
               "Smooth, beautiful dry down", "Beautiful bottle", "Easy to wear", "Great for layering"],
@@ -862,7 +795,6 @@
     value:     ["Overpriced", "Pricey", "Fair", "Good value", "Great value"],
   };
 
-  // Season / time-of-day leaning per scent family
   const WEAR = {
     fresh:    { Spring: 3, Summer: 5, Fall: 1, Winter: 0, Day: 5, Night: 1 },
     citrus:   { Spring: 4, Summer: 5, Fall: 1, Winter: 0, Day: 5, Night: 1 },
@@ -873,7 +805,6 @@
     musk:     { Spring: 3, Summer: 3, Fall: 3, Winter: 2, Day: 4, Night: 2 },
     spicy:    { Spring: 1, Summer: 0, Fall: 5, Winter: 4, Day: 2, Night: 4 },
   };
-  // Keeps the page consistent with the featured homepage reviews
   const KNOWN_PERFORMANCE = {
     "dior-sauvage":             { longevity: 4, sillage: 4 },
     "lattafa-yara":             { longevity: 4, sillage: 4 },
@@ -886,12 +817,8 @@
   const TIMES = ["Day", "Night"];
   const STAR_LABELS = ["Didn't like it", "Not for me", "It's OK", "Like it", "Love it"];
 
-  /* Performance, when-to-wear and agree votes are saved to each member's
-     account on the server (see loadPerformance). They used to live in this
-     browser's localStorage, shared by everyone using it — remove that. */
-  try { localStorage.removeItem("lumiere:my-activity"); } catch (err) { /* storage unavailable */ }
+  try { localStorage.removeItem("lumiere:my-activity"); } catch (err) {}
 
-  // Deterministic pick of n items from a list, seeded by the perfume
   function pick(list, n, seed) {
     const arr = [...list];
     for (let i = arr.length - 1; i > 0; i--) {
@@ -901,7 +828,6 @@
     return arr.slice(0, n);
   }
 
-  // Spread `votes` over levels 1–5, centred on `level`
   function spread(level, votes) {
     const w = [1, 2, 3, 4, 5].map((l) => Math.exp(-((l - level) ** 2) / 0.8));
     const total = w.reduce((a, b) => a + b, 0);
@@ -910,7 +836,6 @@
 
   const sum = (arr) => arr.reduce((a, b) => a + b, 0);
 
-  // 0 = no votes yet
   function levelOf(counts) {
     const total = sum(counts);
     if (!total) return 0;
@@ -918,7 +843,6 @@
     return Math.max(1, Math.min(5, Math.round(mean)));
   }
 
-  /* ---------- Generated community data (catalog perfumes only) ---------- */
   const baseCache = {};
 
   function baseDetails(p) {
@@ -927,7 +851,6 @@
     const fam = p.tags;
     const reviewCount = p.real.reviews;
 
-    // Performance (1–5); perfumes nobody reviewed yet start with no votes
     const famLong = fam.length ? Math.round(fam.reduce((s, t) => s + BASE_LONGEVITY[t], 0) / fam.length) : 3;
     const known = KNOWN_PERFORMANCE[p.id] || {};
     const longevity = known.longevity || Math.max(1, Math.min(5, famLong + ((h >> 3) % 3) - 1));
@@ -935,7 +858,6 @@
     const value = 2 + ((h >> 7) % 4);
     const votes = Math.round(reviewCount * 0.6);
 
-    // Default pros & cons (consistent with performance when there are votes)
     const pros = [], cons = [];
     if (votes) {
       if (longevity >= 4) pros.push("Long-lasting — still there the next morning");
@@ -954,7 +876,6 @@
       votes: votes ? Math.max(1, Math.round(reviewCount * (0.7 - i * 0.12)) - (hash(text + p.id) % 7) * k) : 0,
     })).sort((a, b) => b.votes - a.votes);
 
-    // When to wear: family leaning -> vote counts
     const lean = { Spring: 2, Summer: 2, Fall: 2, Winter: 2, Day: 3, Night: 3 };
     fam.forEach((t) => Object.keys(lean).forEach((k) => { lean[k] += WEAR[t][k]; }));
     const toVotes = (keys) => {
@@ -981,7 +902,6 @@
       .map((x) => x.o);
   }
 
-  // Performance votes from members + the signed-in member's own vote (cached on the perfume)
   const noPerfVote = () => ({ longevity: null, sillage: null, value: null });
   async function loadPerformance(p) {
     try {
@@ -994,7 +914,6 @@
     }
   }
 
-  // Member reviews + star breakdown for a perfume (cached on the perfume)
   async function loadRealReviews(p) {
     try {
       const data = await api(`/perfumes/${encodeURIComponent(p.id)}/reviews`);
@@ -1006,7 +925,6 @@
     }
   }
 
-  /* ---------- Page pieces ---------- */
   function bars(entries) {
     const max = Math.max(...entries.map(([, v]) => v), 1);
     return entries.map(([label, v, display, isMine]) => `
@@ -1025,7 +943,6 @@
       </div>`;
   }
 
-  // `p.perf` = real votes from the API (includes the signed-in member's own vote)
   function perfMeter(key, label, base, p) {
     const names = LEVELS[key];
     const real = p.perf ? p.perf.counts[key] : [0, 0, 0, 0, 0];
@@ -1133,13 +1050,8 @@
       </div>`;
   }
 
-  /* ---------- Notes canvas ----------
-     One labeled circle per note, drawn by the React component in
-     public/js/react/notes-canvas.js. Here we only leave a placeholder
-     with the notes; paintNotesCanvases() lets React render into it. */
-  const MAX_NOTES = 8;   // same limit as the API
+  const MAX_NOTES = 8;
 
-  // "Bergamot, vanilla ,, Musk" -> ["Bergamot", "vanilla", "Musk"]
   const parseNotes = (value) => [...new Set(String(value || "").split(",").map((n) => n.trim()).filter(Boolean))].slice(0, MAX_NOTES);
 
   function notesCanvasHTML(notes, emptyText = "No notes added yet.") {
@@ -1147,15 +1059,13 @@
     return `<div class="notes-canvas-root" data-notes="${escapeHTML(JSON.stringify(notes))}"></div>`;
   }
 
-  // Render (React) every notes canvas placeholder inside `scope`
   function paintNotesCanvases(scope = document) {
     if (window.LumiereNotesCanvas) window.LumiereNotesCanvas.mountAll(scope);
   }
 
-  /* ---------- Notes panel: only the member who added the perfume can edit its notes ---------- */
-  const NOTES_REQUIRED = 3;   // member-added perfumes have exactly 3 notes (same rule as the API)
-  let editingNotes = null;    // slug whose notes are being edited
-  let notesDraft = "";        // what's typed in the edit form (kept if the page re-renders)
+  const NOTES_REQUIRED = 3;
+  let editingNotes = null;
+  let notesDraft = "";
 
   const canEditNotes = (p) => !!session.user && p.source === "community" && p.addedBy === session.user.username;
 
@@ -1186,7 +1096,6 @@
     return `${notesCanvasHTML(p.notes)}${credit}${edit}`;
   }
 
-  // Show notes on a perfume everywhere it appears (page, cards)
   function applyNotes(p, notes, addedBy) {
     p.notes = notes;
     p.notesAddedBy = addedBy || null;
@@ -1218,7 +1127,6 @@
     }
   }
 
-  // Live preview in "Add a perfume" while the notes are typed
   function updateNotesPreview(input, boxId = "notesPreview") {
     const box = document.getElementById(boxId);
     if (!box) return;
@@ -1232,10 +1140,7 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg> Back
     </button>`;
 
-  /* =======================================================
-     Perfume page  (#perfume/<slug>)
-     ======================================================= */
-  let editingReview = null;   // id of your review being edited (null = writing a new one)
+  let editingReview = null;
 
   function renderPerfumePage(p) {
     const base = baseDetails(p);
@@ -1243,7 +1148,7 @@
     const me = session.user;
     const real = p.realReviews || [];
     const myReviews = me ? real.filter((rv) => rv.user.username === me.username) : [];
-    const myReview = myReviews[0] || null;   // your latest review
+    const myReview = myReviews[0] || null;
     const editing = editingReview ? myReviews.find((rv) => String(rv.id) === String(editingReview)) : null;
     const others = real.filter((rv) => !myReviews.includes(rv));
     const rankWeek = rankedPerfumes("week").findIndex((o) => o.id === p.id) + 1;
@@ -1253,7 +1158,7 @@
 
     let writeArea = "";
     if (!me) writeArea = joinPrompt(`Tried ${escapeHTML(p.name)}? Join the community to rate it and share your review.`);
-    else writeArea = composer(p, editing, myReviews.length > 0);   // always available: write another review, or edit one
+    else writeArea = composer(p, editing, myReviews.length > 0);
 
     const reviewList = [
       ...myReviews.filter((rv) => rv !== editing).map((rv) => reviewItem(rv, { mine: true })),
@@ -1380,14 +1285,11 @@
       </div>`;
   }
 
-  /* =======================================================
-     Profile page  (#profile/<username>)
-     ======================================================= */
   let profileData = null;
   let profileTab = "liked";
   let editingProfile = false;
-  let deletingAccount = false;   // the "Delete your account?" box is open
-  let profileList = null;   // { kind: "followers"|"following", users, total } for the open tab
+  let deletingAccount = false;
+  let profileList = null;
 
   function profileReview(rv) {
     const p = byId(rv.perfume);
@@ -1565,10 +1467,7 @@
       </div>`;
   }
 
-  /* =======================================================
-     All reviews  (#all-reviews)
-     ======================================================= */
-  const allReviews = { sort: "popular", scope: "all", rating: "", since: "", q: "", perfume: "", items: [], total: 0, hasMore: false, loading: false };   // perfume: slug, or "" for all
+  const allReviews = { sort: "popular", scope: "all", rating: "", since: "", q: "", perfume: "", items: [], total: 0, hasMore: false, loading: false };
 
   function renderAllReviewsPage() {
     const a = allReviews;
@@ -1637,8 +1536,6 @@
 
   let allReviewsRequest = 0;
 
-  // Changing a filter keeps the current list on screen (dimmed) until the new one arrives
-  // re-render without losing your place in the "Reviewer or keyword" box
   function refreshReviewsPage() {
     const input = document.activeElement && document.activeElement.id === "reviewsQuery" ? document.activeElement : null;
     const caret = input ? [input.selectionStart, input.selectionEnd] : null;
@@ -1659,7 +1556,7 @@
       if (a.since) q.set("since", a.since);
       if (a.q.trim()) q.set("q", a.q.trim());
       const res = await api(`/reviews?${q}`);
-      if (res.reviews.some((r) => !byId(r.perfume))) await syncNewPerfumes();   // a review of a perfume added after this page loaded
+      if (res.reviews.some((r) => !byId(r.perfume))) await syncNewPerfumes();
       if (renderCurrent !== renderAllReviewsPage || id !== allReviewsRequest) return;
       a.items = reset ? res.reviews : [...a.items, ...res.reviews];
       a.total = res.total;
@@ -1671,15 +1568,11 @@
     refreshReviewsPage();
   }
 
-  /* =======================================================
-     Add a perfume  (#add-perfume)
-     ======================================================= */
-  const MAX_PHOTO = 5 * 1024 * 1024;   // server limit
-  const PHOTO_MAX_SIDE = 1600;          // photos are resized to this before upload
-  let addPhoto = null;                  // ready-to-upload JPEG
-  let photoWork = null;                 // promise while a photo is being prepared
+  const MAX_PHOTO = 5 * 1024 * 1024;
+  const PHOTO_MAX_SIDE = 1600;
+  let addPhoto = null;
+  let photoWork = null;
 
-  // "Add a perfume", or (with `edit`) "Edit perfume" for a perfume you added
   function renderAddPage(edit = null) {
     const v = (value) => (edit ? ` value="${escapeHTML(value || "")}"` : "");
     return `
@@ -1795,7 +1688,7 @@
         const except = form.dataset.editing ? `&except=${encodeURIComponent(form.dataset.editing)}` : "";
         const res = await api(`/perfumes/check?brand=${encodeURIComponent(brand)}&name=${encodeURIComponent(name)}${except}`);
         if (id === dupRequest) showDuplicate(res.exists ? res.perfume : null);
-      } catch (err) { /* the server check on submit still protects us */ }
+      } catch (err) {}
     }, 350);
   }
 
@@ -1818,7 +1711,7 @@
     if (!body.name) fields.name = "Please enter the perfume's name.";
     const notesError = notesCountError(parseNotes(body.notes));
     if (notesError) fields.notes = notesError;
-    if (photoWork) await photoWork;   // wait until a chosen photo is ready
+    if (photoWork) await photoWork;
     const photoError = $('[data-error-for="photo"]').textContent;
     const editing = form.dataset.editing ? byId(form.dataset.editing) : null;
     if (photoError) fields.photo = photoError;
@@ -1831,7 +1724,6 @@
     submit.disabled = true;
     submit.textContent = "Adding…";
     try {
-      // the photo is the request body; the details travel in a header
       const { perfume } = await api("/perfumes", {
         method: "POST",
         file: addPhoto,
@@ -1890,7 +1782,6 @@
     }
   }
 
-  // A perfume's details changed (by you, or live from the owner)
   function updatePerfume(json) {
     const p = byId(json.slug);
     if (!p) return;
@@ -1920,7 +1811,6 @@
     }
   }
 
-  // A perfume is gone (deleted by you, or live by its owner)
   function removePerfume(id) {
     if (!byId(id)) return;
     perfumes = perfumes.filter((x) => x.id !== id);
@@ -1932,7 +1822,6 @@
     else if (location.hash === `#perfume/${encodeURIComponent(id)}` || location.hash === `#perfume/${id}`) route();
   }
 
-  // Resize any photo (e.g. a big phone photo) to a web-friendly JPEG
   async function preparePhoto(file) {
     const bitmap = await createImageBitmap(file);
     const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
@@ -1940,7 +1829,7 @@
     canvas.width = Math.round(bitmap.width * scale);
     canvas.height = Math.round(bitmap.height * scale);
     const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#fff";                         // transparent PNGs get a white background
+    ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close();
@@ -1979,9 +1868,6 @@
       .finally(() => { photoWork = null; });
   }
 
-  /* =======================================================
-     Info pages: About (#about) · Help center (#help) · Privacy (#privacy)
-     ======================================================= */
   const SUPPORT_EMAIL = "support@lumiere.com";
 
   function infoPage(crumb, body) {
@@ -2086,9 +1972,6 @@
     }
   }
 
-  /* =======================================================
-     Accounts: session, sign up / log in window, account menu
-     ======================================================= */
   const session = { user: null, likes: new Set(), following: new Set() };
   const isLiked = (id) => session.likes.has(id);
   const isFollowing = (username) => session.following.has(username);
@@ -2099,14 +1982,12 @@
     session.following = new Set((data && data.following) || []);
   }
 
-  // Every request to our Express API goes through jQuery AJAX ($.ajax).
-  // Resolves with the JSON body; rejects with an Error carrying { status, data } (status 0 = server unreachable).
   const parseJSON = (text) => { try { return JSON.parse(text); } catch (err) { return {}; } };
 
   function api(path, { method = "GET", body, file, headers = {} } = {}) {
     const settings = { url: `/api${path}`, method, headers: { ...headers }, dataType: "text" };
     if (file) {
-      Object.assign(settings, { data: file, processData: false, contentType: file.type });   // raw photo upload
+      Object.assign(settings, { data: file, processData: false, contentType: file.type });
     } else if (body !== undefined) {
       Object.assign(settings, { data: JSON.stringify(body), contentType: "application/json" });
     }
@@ -2138,7 +2019,7 @@
       mobile.innerHTML = `
         <button class="btn btn--ghost" data-auth="login">Log in</button>
         <button class="btn btn--primary" data-auth="signup">Sign up</button>`;
-      try { localStorage.removeItem("lumiere:account"); } catch (err) { /* storage unavailable */ }
+      try { localStorage.removeItem("lumiere:account"); } catch (err) {}
       return;
     }
     const profileHref = `#profile/${encodeURIComponent(me.username)}`;
@@ -2161,14 +2042,12 @@
       <a class="btn btn--primary" href="#add-perfume">Add a perfume</a>
       <button class="btn btn--ghost nav__logout" data-logout>Log out</button>`;
     // remembered so the next page load paints this header straight away (see the script in home.html)
-    try { localStorage.setItem("lumiere:account", desktop.innerHTML); } catch (err) { /* storage unavailable */ }
+    try { localStorage.setItem("lumiere:account", desktop.innerHTML); } catch (err) {}
   }
 
-  // Signed out: welcome + join. Signed in: no box (members are found with the main search).
   function renderSnapshot() {
     const me = session.user;
     const box = $("#snapshot");
-    // the login state is known now -> show the right thing (the box is hidden on page load to avoid a flash)
     box.classList.remove("is-pending");
     box.removeAttribute("aria-busy");
     box.hidden = !!me;
@@ -2180,7 +2059,6 @@
     }
   }
 
-  // Signed-out visitors only get "Home"; the other sections are for members
   function applyAuthState() {
     const signedIn = !!session.user;
     document.documentElement.classList.toggle("is-member", signedIn);
@@ -2193,10 +2071,9 @@
     renderSnapshot();
   }
 
-  // Re-render everything that depends on who is signed in
   function onAuthChange() {
     applyAuthState();
-    perfumes.forEach((x) => { delete x.perf; });   // performance votes are per member
+    perfumes.forEach((x) => { delete x.perf; });
     const viewing = currentPerfume();
     if (viewing) loadPerformance(viewing).then(() => { if (currentPerfume() === viewing) refreshPage(); });
     document.dispatchEvent(new CustomEvent("lumiere:auth"));
@@ -2213,7 +2090,6 @@
     else if (!$("#perfumeView").hidden) route();
   }
 
-  /* ---------- Sign up / log in window ---------- */
   let lastFocus = null;
 
   function field(name, label, type, autocomplete, hint = "") {
@@ -2294,13 +2170,9 @@
     }
   }
 
-  /* ---------- Page controls handled with jQuery event delegation on the page view ----------
-     All reviews (sort, whose, stars, date, reviewer/keyword, load more, clear),
-     Members (search, load more), profile editing / delete account, Help center form */
   function initPageControls() {
     const $view = jQuery("#perfumeView");
 
-    // All reviews
     $view.on("click", "[data-reviews-sort]", function () { allReviews.sort = jQuery(this).attr("data-reviews-sort"); loadAllReviews(true); });
     $view.on("click", "[data-reviews-scope]", function () { allReviews.scope = jQuery(this).attr("data-reviews-scope"); loadAllReviews(true); });
     $view.on("click", "[data-reviews-rating]", function () { allReviews.rating = jQuery(this).attr("data-reviews-rating"); loadAllReviews(true); });
@@ -2314,7 +2186,6 @@
       reviewsQueryTimer = setTimeout(() => loadAllReviews(true), 300);
     });
 
-    // Members
     $view.on("click", "[data-members-more]", () => loadMembers(false));
     let membersQueryTimer = 0;
     $view.on("input", "#membersQuery", function () {
@@ -2323,17 +2194,14 @@
       membersQueryTimer = setTimeout(() => loadMembers(true), 300);
     });
 
-    // Profile: edit, delete account
     $view.on("click", "[data-edit-profile]", () => { editingProfile = true; refreshPage(); jQuery("#profileForm input").first().trigger("focus"); });
     $view.on("click", "[data-cancel-profile]", () => { editingProfile = false; deletingAccount = false; refreshPage(); });
     $view.on("click", "[data-delete-account]", () => { deletingAccount = true; refreshPage(); jQuery("#deleteAccountPassword").trigger("focus"); });
     $view.on("click", "[data-cancel-delete-account]", () => { deletingAccount = false; refreshPage(); });
     $view.on("click", "[data-confirm-delete-account]", function () { deleteAccount(this); });
 
-    // Help center
     $view.on("submit", "#contactForm", function (e) { e.preventDefault(); submitContact(this); });
 
-    // Groups page: search by name / topic and scent family
     let groupsQueryTimer = 0;
     $view.on("input", "#groupsQuery", function () {
       groups.q = String(jQuery(this).val() || "");
@@ -2342,12 +2210,10 @@
     });
     $view.on("change", "#groupsFamily", function () { groups.family = jQuery(this).val(); refreshKeepingFocus(); });
 
-    // Group page: the creator edits / deletes the group
     $view.on("click", "[data-delete-group]", () => { groupView.confirmDelete = true; refreshPage(); });
     $view.on("click", "[data-cancel-group-delete]", () => { groupView.confirmDelete = false; refreshPage(); });
     $view.on("click", "[data-confirm-group-delete]", function () { deleteGroup(this); });
 
-    // Group page: search posts (words or @member, date)
     let postsQueryTimer = 0;
     $view.on("input", "#postsQuery", function () {
       groupView.q = String(jQuery(this).val() || "");
@@ -2356,7 +2222,6 @@
     });
     $view.on("change", "#postsSince", function () { groupView.since = jQuery(this).val(); loadGroupPosts(true); });
 
-    // Group page: edit your own post or reply
     $view.on("click", "[data-post-edit]", function () {
       groupView.editing = String(jQuery(this).attr("data-post-edit"));
       refreshPage();
@@ -2368,7 +2233,6 @@
     $view.on("submit", "[data-post-edit-form]", function (e) { e.preventDefault(); saveEditedPost(this); });
   }
 
-  // Re-render the open page without losing your place in one of its search boxes
   const SEARCH_BOX_IDS = ["reviewsQuery", "membersQuery", "groupsQuery", "postsQuery"];
   function refreshKeepingFocus() {
     const active = document.activeElement;
@@ -2399,7 +2263,7 @@
   }
 
   async function logout() {
-    try { await api("/auth/logout", { method: "POST" }); } catch (err) { /* cookie may already be gone */ }
+    try { await api("/auth/logout", { method: "POST" }); } catch (err) {}
     setSession(null);
     onAuthChange();
     toast("You've been logged out");
@@ -2451,7 +2315,6 @@
       }
       toast(on ? `You're now following @${username}` : `You unfollowed @${username}`);
       document.dispatchEvent(new CustomEvent("lumiere:follow", { detail: { username, following: on, followers: res.followers } }));
-      // the home feed switches to "people you follow" once you follow someone
       if (on && session.following.size === 1) activityScope = "following";
       if (activityScope === "following") loadActivity();
       return { following: on, followers: res.followers };
@@ -2462,7 +2325,6 @@
     }
   }
 
-  // Update a review everywhere it's cached after a helpful vote
   function patchReview(id, changes) {
     const lists = [popularReviews, allReviews.items, profileData ? profileData.reviews : [], ...perfumes.map((p) => p.realReviews || [])];
     lists.forEach((list) => list.forEach((r) => { if (String(r.id) === String(id)) Object.assign(r, changes); }));
@@ -2512,7 +2374,6 @@
       if (e.target.closest("[data-close-modal]")) { closeAuth(); return; }
       if (e.target.closest("[data-logout]")) { logout(); return; }
 
-      // Account dropdown: toggle on the button, close on any other click
       const menu = $("#accountMenu");
       if (!menu) return;
       const accountBtn = e.target.closest("#accountBtn");
@@ -2537,13 +2398,10 @@
     }, true);
   }
 
-  /* =======================================================
-     Router: #perfume/<slug> · #profile/<username> · #add-perfume
-     ======================================================= */
   let returnScroll = 0;
-  let homeSeen = false;      // true once the homepage was shown in this visit
-  let pendingSection = null; // e.g. jump straight to the reviews
-  let renderCurrent = null;  // re-renders the open page in place
+  let homeSeen = false;
+  let pendingSection = null;
+  let renderCurrent = null;
   let routeToken = 0;
 
   const currentPerfume = () => {
@@ -2646,7 +2504,7 @@
   }
 
   function showAllReviews(perfume = "") {
-    if (allReviews.perfume !== perfume) {   // switching between all reviews and one perfume's: start fresh
+    if (allReviews.perfume !== perfume) {
       Object.assign(allReviews, { perfume, rating: "", since: "", q: "", items: [], total: 0, hasMore: false });
     }
     const p = perfume && byId(perfume);
@@ -2655,7 +2513,6 @@
     loadAllReviews(true);
   }
 
-  /* ---------- Members  (#members): everyone on LUMIERE, A–Z, with search ---------- */
   const membersDir = { q: "", users: [], total: 0, hasMore: false, loading: false };
   let membersRequest = 0;
 
@@ -2768,7 +2625,7 @@
     if ((m = hash.match(/^#edit-perfume\/(.+)$/))) return showEditPerfume(decodeURIComponent(m[1]));
     if (hash === "#about") { renderCurrent = renderAboutPage; return showView(renderAboutPage(), "About"); }
     if (hash === "#privacy") { renderCurrent = renderPrivacyPage; return showView(renderPrivacyPage(), "Privacy"); }
-    if (hash === "#help") { renderCurrent = null; return showView(renderHelpPage(), "Help center"); }   // keep what's typed
+    if (hash === "#help") { renderCurrent = null; return showView(renderHelpPage(), "Help center"); }
     if (hash === "#groups") return showGroups();
     if (hash === "#members") return showMembers();
     if (hash === "#messages") return showMessenger();
@@ -2779,7 +2636,6 @@
     showHome();
   }
 
-  // Re-render the open page in place (keeps the scroll position)
   function refreshPage() {
     if (!renderCurrent) return;
     const y = window.scrollY;
@@ -2788,14 +2644,12 @@
     paintNotesCanvases($("#perfumeView"));
   }
 
-  // Keep card ratings in sync after you post or delete a review
   function refreshCardRatings(p) {
     $$(`.perfume-card[data-perfume="${p.id}"] .rating`).forEach((el) => { el.outerHTML = ratingRow(p); });
     renderPerfumeFilters();
     if (state.rating) renderTrendingKeepScroll();
   }
 
-  // Toggle a when-to-wear pick ("wear") or an agree vote on a pro/con ("agree")
   async function toggleOpinion(p, kind, value) {
     if (!session.user) {
       openAuth("login", kind === "wear"
@@ -2807,7 +2661,6 @@
     const box = p.perf[kind];
     const on = !box.mine.includes(value);
 
-    // optimistic update, then confirm with the server's totals
     const snapshot = JSON.parse(JSON.stringify(p.perf));
     box.mine = on ? [...box.mine, value] : box.mine.filter((v) => v !== value);
     box.counts[value] = Math.max(0, (box.counts[value] || 0) + (on ? 1 : -1));
@@ -2823,7 +2676,6 @@
     }
   }
 
-  // Click a level to vote; click your current level again to remove the vote
   async function votePerformance(p, value) {
     if (!session.user) {
       openAuth("login", "Log in to rate this perfume's longevity, sillage and value.");
@@ -2835,7 +2687,6 @@
     const previous = p.perf.mine[key];
     const next = previous === level ? null : level;
 
-    // optimistic update, then confirm with the server's totals
     const snapshot = JSON.parse(JSON.stringify(p.perf));
     if (previous) p.perf.counts[key][previous - 1] -= 1;
     if (next) p.perf.counts[key][next - 1] += 1;
@@ -2907,7 +2758,6 @@
   function initPages() {
     const view = $("#perfumeView");
 
-    // Open a perfume (or group) by clicking anywhere on its card (buttons keep their own actions)
     document.addEventListener("click", (e) => {
       const groupCardEl = e.target.closest(".group-card[data-group]");
       if (groupCardEl && !e.target.closest("button, a")) { location.hash = `group/${groupCardEl.dataset.group}`; return; }
@@ -2917,7 +2767,6 @@
     });
 
     view.addEventListener("click", (e) => {
-      // edit the notes of a perfume you added
       if (e.target.closest("[data-edit-notes]")) {
         const p = currentPerfume();
         if (!p) return;
@@ -2935,13 +2784,11 @@
       const yesBtn = e.target.closest("[data-confirm-delete]");
       if (yesBtn) { yesBtn.disabled = true; deletePerfume(yesBtn.dataset.confirmDelete); return; }
       if (e.target.closest("[data-back]")) {
-        // Came from the site -> real Back; opened a shared link directly -> go home
         if (homeSeen) history.back();
         else location.hash = "";
         return;
       }
 
-      // ----- Profile page -----
       const tab = e.target.closest("[data-profile-tab]");
       if (tab) {
         profileTab = tab.dataset.profileTab;
@@ -2950,7 +2797,6 @@
         return;
       }
 
-      // ----- Groups -----
       const gFilter = e.target.closest("[data-groups-filter]");
       if (gFilter) { groups.filter = gFilter.dataset.groupsFilter; refreshPage(); return; }
       const pSort = e.target.closest("[data-posts-sort]");
@@ -2963,12 +2809,8 @@
       const postDelete = e.target.closest("[data-post-delete]");
       if (postDelete) { deletePost(postDelete.dataset.postDelete, postDelete.dataset.parent || null); return; }
 
-      // (All reviews, Members, profile editing and the contact form: see initPageControls, jQuery)
-
-      // ----- Add a perfume -----
       if (e.target.closest("#photoRemove")) { choosePhoto(null); return; }
 
-      // ----- Perfume page -----
       const p = currentPerfume();
       if (!p) return;
 
@@ -3063,16 +2905,12 @@
     });
   }
 
-  /* =======================================================
-     Groups: directory (#groups), group page (#group/<slug>),
-     create a group (#create-group)
-     ======================================================= */
   const GROUP_TONES = {
     woody: ["#f1ebe3", "#7a5a37"], floral: ["#f7e9ec", "#9a4a5c"], fresh: ["#e5f1ef", "#2f6f68"], amber: ["#f6ecdc", "#8a5a1c"],
     citrus: ["#f7f1d9", "#7a6512"], musk: ["#eef0ef", "#4b5f66"], spicy: ["#f6e6df", "#93492c"], gourmand: ["#f1e7e1", "#6e4330"],
   };
-  const groups = { list: null, filter: "all", q: "", family: "" };   // q / family: search on the Groups page
-  let groupView = null;   // the open group page: { slug, group, posts, total, hasMore, sort, loading, replies: {} }
+  const groups = { list: null, filter: "all", q: "", family: "" };
+  let groupView = null;
 
   const groupTone = (g) => GROUP_TONES[g.family] || AVATAR_TONES[hash(g.slug) % AVATAR_TONES.length];
 
@@ -3127,7 +2965,6 @@
     else if (!list.length && searching) body = '<p class="pv__empty">No groups match your search.</p>';
     else if (!list.length) body = `<p class="pv__empty">You haven't joined any groups yet. Pick a few from “All groups”.</p>`;
     else body = `<div class="group-grid">${list.map(groupCard).join("")}</div>`;
-    // scent families the groups actually use
     const usedFamilies = families.filter((f) => groups.family === f.key || (groups.list || []).some((g) => g.family === f.key));
     const search = `
         <div class="filter-fields" role="search" aria-label="Search groups">
@@ -3169,7 +3006,6 @@
       </div>`;
   }
 
-  /* ---------- Group page ---------- */
   function perfumeTag(slug) {
     const p = byId(slug);
     if (!p) return "";
@@ -3202,7 +3038,6 @@
       </li>`;
   }
 
-  // Edit your own post or reply in place
   function postEditForm(p) {
     return `
       <form class="composer gpost-edit" data-post-edit-form="${p.id}"${p.parent ? ` data-parent="${p.parent}"` : ""} novalidate>
@@ -3441,7 +3276,6 @@
     }
   }
 
-  // Update the open group, the directory and the homepage teaser after joining/leaving
   function applyMembership(slug, isMember, members) {
     (groups.list || []).forEach((g) => { if (g.slug === slug) Object.assign(g, { isMember, members }); });
     if (groupView && groupView.group && groupView.group.slug === slug) Object.assign(groupView.group, { isMember, members });
@@ -3560,8 +3394,6 @@
     }
   }
 
-  /* ---------- Create a group ---------- */
-  // "Create a group", or (with `edit`) "Edit group" for a group you created
   function renderCreateGroupPage(edit = null) {
     return `
       <div class="container pv">
@@ -3630,7 +3462,7 @@
       try {
         const res = await api(`/groups/check?name=${encodeURIComponent(name)}${except}`);
         showGroupDuplicate(res.exists ? res.group : null);
-      } catch (err) { /* checked again on submit */ }
+      } catch (err) {}
     }, 300);
   }
 
@@ -3736,7 +3568,6 @@
     }
   }
 
-  /* ---------- Group posts chart (D3, see group-chart.js) ---------- */
   async function initGroupChart() {
     const box = $("#groupChart");
     if (!box) return;
@@ -3748,23 +3579,18 @@
     }
   }
 
-  /* =======================================================
-     Messenger  (#messages · #messages/<username>)
-     History comes from the API; new messages, typing, read
-     receipts and online status arrive live over Socket.io.
-     ======================================================= */
   const messenger = {
-    conversations: null,   // list (newest first)
-    active: null,          // open conversation
-    opening: false,        // a chat is being opened that isn't known yet
-    threads: new Map(),    // conversation id -> { messages (oldest first), hasMore, loaded }, so chats reopen instantly
-    thread: { messages: [], hasMore: false, loaded: false },   // the open conversation's entry in `threads`
+    conversations: null,
+    active: null,
+    opening: false,
+    threads: new Map(),
+    thread: { messages: [], hasMore: false, loaded: false },
     get messages() { return this.thread.messages; },
     set messages(list) { this.thread.messages = list; },
     get hasMore() { return this.thread.hasMore; },
     set hasMore(value) { this.thread.hasMore = value; },
     loading: false,
-    online: new Set(),     // usernames online right now
+    online: new Set(),
     typingUntil: 0,
     unread: 0,
   };
@@ -3779,7 +3605,6 @@
     return messenger.threads.get(key);
   }
 
-  // add a live message to a thread (or replace my optimistic copy of it)
   function addToThread(thread, message, clientId) {
     const i = thread.messages.findIndex((m) => String(m.id) === String(message.id) || (clientId && m.clientId === clientId));
     if (i >= 0) thread.messages[i] = message;
@@ -3807,12 +3632,10 @@
     setTitle(document.title.replace(/^\(\d+\+?\) /, ""));
   }
 
-  // Page titles keep the unread count in front, e.g. "(2) Groups — LUMIERE"
   function setTitle(text) {
     document.title = messenger.unread ? `(${messenger.unread}) ${text}` : text;
   }
 
-  /* ---------- Live connection ---------- */
   function connectSocket() {
     disconnectSocket();
     if (!session.user || !window.io) return;
@@ -3822,7 +3645,6 @@
     socket.on("connect", () => {
       queryPresence();
       updateConnectionNote();
-      // back after a dropped connection: catch up on what was sent meanwhile (badge, list, open chat)
       if (connectedBefore) {
         loadConversations();
         if (isMessengerOpen() && messenger.active) {
@@ -3846,12 +3668,11 @@
         renderThreadHeader();
         if (!mine && document.visibilityState === "visible") markActiveRead();
       } else {
-        // keep a chat that was opened before up to date, so it reopens instantly
         const thread = messenger.threads.get(String(conversation.id));
         if (thread) addToThread(thread, message, clientId);
         if (!mine) {
           showChatPopup(conversation, message);
-          prefetchThread(conversation.id);   // the popup opens this chat: have its messages ready
+          prefetchThread(conversation.id);
         }
       }
       if (typeof totalUnread === "number") setUnread(totalUnread);
@@ -3877,7 +3698,7 @@
 
     socket.on("perfume:changed", ({ perfume }) => updatePerfume(perfume));
     socket.on("perfume:added", ({ perfume }) => {
-      if (byId(perfume.slug)) return;   // e.g. the one I just added myself
+      if (byId(perfume.slug)) return;
       perfumes.push(buildPerfume(perfume));
       renderFilterBar();
       renderTrendingKeepScroll();
@@ -3941,7 +3762,6 @@
   function markActiveRead() {
     if (!messenger.active || !socket) return;
     socket.emit("conversation:read", { conversationId: messenger.active.id });
-    // update the badge right away (the server confirms with "unread:changed")
     const c = (messenger.conversations || []).find((x) => String(x.id) === String(messenger.active.id));
     const wasUnread = (c ? c.unread : messenger.active.unread) || 0;
     if (wasUnread) setUnread(messenger.unread - wasUnread);
@@ -3950,7 +3770,6 @@
     renderConversationList();
   }
 
-  /* ---------- Rendering ---------- */
   function conversationItem(c) {
     const active = messenger.active && String(messenger.active.id) === String(c.id);
     const online = messenger.online.has(c.other.username);
@@ -4004,7 +3823,6 @@
     let html = messenger.hasMore
       ? `<div class="thread__older"><button class="link link--btn" data-older ${messenger.loading ? "disabled" : ""}>${messenger.loading ? "Loading…" : "Load earlier messages"}</button></div>`
       : "";
-    // only once the messages have loaded (never while they're on their way)
     if (!msgs.length && messenger.thread.loaded && !messenger.loading) {
       html += `<p class="thread__start">This is the start of your conversation with <strong>${escapeHTML(messenger.active.other.displayName)}</strong>. Say hi 👋</p>`;
     }
@@ -4050,7 +3868,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12l16-8-6 16-2-7z"/></svg>
         </button>
       </form>`
-      : messenger.opening ? ""   // stays blank for the moment it takes to open the chat
+      : messenger.opening ? ""
       : `
       <div class="thread__empty">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-11.6 7.1L4 20l1-4.2A8 8 0 1 1 20 12z"/></svg>
@@ -4095,9 +3913,6 @@
     note.textContent = ok ? "" : "Reconnecting to live chat…";
   }
 
-  /* ---------- Opening a chat ---------- */
-  // Before the page is drawn: a chat we already know (from the list, a popup or an earlier visit)
-  // opens straight away with the messages we have; an unknown one opens blank until the server answers.
   function prepareChat(username) {
     const name = username.toLowerCase();
     const known = (messenger.conversations || []).find((c) => c.other.username === name)
@@ -4117,7 +3932,7 @@
     const token = ++chatToken;
     try {
       let fresh = false;
-      if (!messenger.active) {   // not known yet: ask the server (this also starts a new conversation) + its messages
+      if (!messenger.active) {
         const res = await api("/conversations", { method: "POST", body: { username, withMessages: true } });
         if (token !== chatToken || !isMessengerOpen()) return;
         const { conversation } = res;
@@ -4130,7 +3945,7 @@
       markActiveRead();
       const input = $("#chatForm textarea");
       if (input && window.matchMedia("(min-width: 681px)").matches) input.focus();
-      if (!fresh) await loadMessages(false);   // fresh copy from the server (the shown messages may be from earlier)
+      if (!fresh) await loadMessages(false);
     } catch (err) {
       if (token !== chatToken) return;
       messenger.opening = false;
@@ -4139,7 +3954,6 @@
     }
   }
 
-  // Fetch a chat's messages; `older` loads the page before the first one shown
   async function loadMessages(older) {
     const a = messenger.active;
     const thread = messenger.thread;
@@ -4155,7 +3969,7 @@
       const box = $("#threadMessages");
       const prevHeight = box ? box.scrollHeight : 0;
       renderThreadBody(!older);
-      if (older && box) box.scrollTop = box.scrollHeight - prevHeight;   // keep your place
+      if (older && box) box.scrollTop = box.scrollHeight - prevHeight;
     } catch (err) {
       if (messenger.thread === thread) messenger.loading = false;
       toast(err.message);
@@ -4165,7 +3979,6 @@
   function storeMessages(thread, res, older) {
     if (older) thread.messages = [...res.messages, ...thread.messages];
     else {
-      // keep messages I'm still sending, and live ones that arrived while this request was on its way
       const last = res.messages.length ? res.messages[res.messages.length - 1].createdAt : "";
       const keep = thread.messages.filter((m) => !res.messages.some((x) => String(x.id) === String(m.id))
         && (m.pending || m.failed || m.createdAt > last));
@@ -4175,7 +3988,6 @@
     thread.loaded = true;
   }
 
-  // Load a chat's messages in the background (when its popup appears, or you point at it in the list)
   const prefetching = new Set();
   function prefetchThread(conversationId) {
     const thread = threadFor(conversationId);
@@ -4184,7 +3996,7 @@
     prefetching.add(key);
     api(`/conversations/${key}/messages`)
       .then((res) => { if (!thread.loaded) storeMessages(thread, res, false); })
-      .catch(() => { /* it loads when the chat opens */ })
+      .catch(() => {})
       .finally(() => prefetching.delete(key));
   }
 
@@ -4216,7 +4028,6 @@
     textarea.style.height = `${Math.min(140, textarea.scrollHeight)}px`;
   }
 
-  /* ---------- Popup when a message arrives elsewhere on the site ---------- */
   function showChatPopup(conversation, message) {
     const stack = $("#chatPopups");
     if (!stack) return;
@@ -4241,7 +4052,6 @@
     setTimeout(remove, 7000);
   }
 
-  /* ---------- Member search inside the messenger ---------- */
   let memberSearchTimer = 0;
   function searchMembers(input) {
     const box = $(".search-suggest", input.form);
@@ -4261,11 +4071,10 @@
               </a>`).join("")
           : `<p class="suggest-empty">No members found for “${escapeHTML(q)}”</p>`;
         box.hidden = false;
-      } catch (err) { /* ignore */ }
+      } catch (err) {}
     }, 200);
   }
 
-  /* ---------- Route ---------- */
   function showMessenger(username) {
     if (!session.user) {
       history.replaceState(null, "", location.pathname + location.search);
@@ -4282,14 +4091,13 @@
       if (wasOpen) mountMessenger(); else showView(renderMessengerPage(), "Messages");
       renderConversationList();
     } else {
-      prepareChat(username);   // the chat (and its known messages) is in the very first render
+      prepareChat(username);
       if (wasOpen) mountMessenger(); else { showView(renderMessengerPage(), "Messages"); fillMessenger(); }
       openChat(username);
     }
     if (!messenger.conversations || !wasOpen) loadConversations();
   }
 
-  // Connect live chat when signed in; clear everything on log out
   function startMessenger() {
     if (session.user) {
       connectSocket();
@@ -4337,7 +4145,6 @@
       if (e.target.closest("[data-older]")) loadMessages(true);
     });
 
-    // pointing at a chat in the list starts loading it, so it opens instantly
     view.addEventListener("pointerover", (e) => {
       const link = e.target.closest("#convList a.conv");
       if (!link) return;
@@ -4346,15 +4153,11 @@
       if (c) prefetchThread(c.id);
     });
 
-    // reading a chat when you come back to the tab marks it read
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible" && isMessengerOpen() && messenger.active) markActiveRead();
     });
   }
 
-  /* =======================================================
-     Review trends chart (D3, see trends-chart.js)
-     ======================================================= */
   async function initTrendsChart() {
     const box = $("#trendsChart");
     if (!box) return;
@@ -4374,10 +4177,6 @@
     }
   }
 
-  /* =======================================================
-     Bridge for React components (public/js/react/*)
-     Events on document: "lumiere:ready", "lumiere:auth", "lumiere:follow"
-     ======================================================= */
   let appReady = false;
   window.Lumiere = {
     api,
@@ -4392,13 +4191,9 @@
     },
   };
 
-  /* =======================================================
-     Init
-     ======================================================= */
   document.addEventListener("DOMContentLoaded", async () => {
     $("#year").textContent = new Date().getFullYear();
 
-    // Broken photo -> show the illustrated bottle in the same frame
     document.addEventListener("error", (e) => {
       if (e.target.matches && e.target.matches("img.perfume-media__img")) {
         e.target.closest(".perfume-media").classList.add("is-broken");
@@ -4413,7 +4208,6 @@
     initCommunity();
     initMessenger();
 
-    // Who is signed in + the perfume list (catalog and member-added perfumes)
     const [me, list] = await Promise.allSettled([api("/auth/me"), api("/perfumes")]);
     setSession(me.status === "fulfilled" ? me.value : null);
     if (list.status === "fulfilled") {
@@ -4438,15 +4232,11 @@
     keepLayoutSteady();
   });
 
-  /* ---------- Steady layout on refresh ----------
-     The home sections fill in as their data arrives. Their heights are saved when leaving the page,
-     the script after </main> in home.html reserves them on the next load (so the restored scroll
-     position doesn't jump), and they're released once the page has settled. */
   const STEADY_IDS = ["filterBar", "trendingGrid", "reviewList", "activityFeed", "topReviewersRoot", "groupsTeaser", "trendsChart", "groupChart"];
 
   function keepLayoutSteady() {
     window.addEventListener("pagehide", () => {
-      if ($("main").hidden) return;   // a page is open, not the homepage
+      if ($("main").hidden) return;
       const heights = {};
       STEADY_IDS.forEach((id) => {
         const el = document.getElementById(id);
@@ -4454,10 +4244,9 @@
       });
       try {
         sessionStorage.setItem("lumiere:layout", JSON.stringify({ w: window.innerWidth, member: !!session.user, heights }));
-      } catch (err) { /* storage unavailable */ }
+      } catch (err) {}
     });
 
-    // release the reserved heights once the sections stop changing (or after a few seconds at most)
     const reserved = STEADY_IDS.map((id) => document.getElementById(id)).filter((el) => el && el.style.minHeight);
     if (!reserved.length) return;
     let quiet;

@@ -7,7 +7,6 @@ const sessionSchema = new mongoose.Schema({
   expiresAt: { type: Date, required: true },
 });
 
-// MongoDB removes expired sessions automatically
 sessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model("Session", sessionSchema);

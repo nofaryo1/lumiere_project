@@ -1,5 +1,3 @@
-// Discussion groups: list, create, edit / delete (creator), membership, posts (search, edit / delete your own),
-// replies and post likes
 const mongoose = require("mongoose");
 const User = require("../models/User");
 const Group = require("../models/Group");
@@ -9,9 +7,8 @@ const Perfume = require("../models/Perfume");
 const { slugify, normalize } = require("../lib/perfumeKey");
 const { FAMILIES, text, limitParam, escapeRegex, authorJSON } = require("../lib/helpers");
 
-const SINCE_DAYS = { week: 7, month: 30, year: 365 };   // ?since= when searching posts
+const SINCE_DAYS = { week: 7, month: 30, year: 365 };
 
-/* ---------- Groups ---------- */
 async function findGroup(req, res) {
   const group = await Group.findOne({ slug: String(req.params.slug) });
   if (!group) res.status(404).json({ error: "Group not found." });
@@ -20,7 +17,6 @@ async function findGroup(req, res) {
 
 const isMemberOf = (group, user) => (user ? GroupMember.exists({ group: group._id, user: user._id }) : null);
 
-// Members, posts and recent activity for every group (one round of aggregations)
 async function groupStats() {
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const [members, posts] = await Promise.all([
@@ -85,7 +81,6 @@ exports.list = async (req, res) => {
   res.json({ groups: list });
 };
 
-// Live duplicate check for "Create a group"
 exports.check = async (req, res) => {
   const except = text(req.query.except, 200);
   const g = await Group.findOne({ nameKey: normalize(text(req.query.name, 60)), ...(except ? { slug: { $ne: except } } : {}) });
@@ -108,7 +103,7 @@ exports.create = async (req, res) => {
   let slug = slugify(name) || "group";
   for (let i = 2; await Group.exists({ slug }); i++) slug = `${slugify(name)}-${i}`;
   const group = await Group.create({ slug, name, nameKey: normalize(name), description, family, source: "member", createdBy: req.user._id });
-  await GroupMember.create({ group: group._id, user: req.user._id });   // creators join automatically
+  await GroupMember.create({ group: group._id, user: req.user._id });
   await group.populate("createdBy", "username displayName");
   res.status(201).json({ group: groupJSON(group, { members: 1 }, { isMember: true }) });
 };
@@ -137,7 +132,6 @@ exports.show = async (req, res) => {
   });
 };
 
-// Only the member who created a group can change it (built-in groups have no creator)
 async function ownGroup(req, res) {
   const group = await findGroup(req, res);
   if (!group) return null;
@@ -162,14 +156,13 @@ exports.update = async (req, res) => {
   if (existing) {
     return res.status(409).json({ error: "A group with this name already exists.", existing: { slug: existing.slug, name: existing.name } });
   }
-  Object.assign(group, { name, nameKey: normalize(name), description, family });   // the address (slug) stays the same
+  Object.assign(group, { name, nameKey: normalize(name), description, family });
   await group.save();
   await group.populate("createdBy", "username displayName");
   const [stats, isMember] = await Promise.all([groupStats(), isMemberOf(group, req.user)]);
   res.json({ group: groupJSON(group, stats[group._id], { isMember: !!isMember }) });
 };
 
-// Delete a group you created, with its members list and all its posts
 exports.remove = async (req, res) => {
   const group = await ownGroup(req, res);
   if (!group) return;
@@ -214,7 +207,6 @@ exports.posts = async (req, res) => {
   const sort = req.query.sort === "top" ? { likesCount: -1, createdAt: -1 } : { createdAt: -1 };
   const filter = { group: group._id, parent: null };
   if (SINCE_DAYS[req.query.since]) filter.createdAt = { $gte: new Date(Date.now() - SINCE_DAYS[req.query.since] * 24 * 60 * 60 * 1000) };
-  // ?q= : words in the post, or the author's name / @username
   const q = text(req.query.q, 60).replace(/^@/, "");
   if (q) {
     const re = new RegExp(escapeRegex(q), "i");
@@ -255,7 +247,6 @@ exports.createPost = async (req, res) => {
   res.status(201).json({ post: postJSON(post, req.user) });
 };
 
-// Edit one of your own posts or replies
 exports.updatePost = async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ error: "Post not found." });
   const post = await GroupPost.findById(req.params.id);

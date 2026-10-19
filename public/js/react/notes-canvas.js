@@ -1,16 +1,3 @@
-/* =========================================================
-   LUMIERE — Notes canvas (React)
-   A <canvas> with one labeled circle per note: on the perfume
-   page ("Notes at a glance"), in the Add / Edit perfume preview
-   and in the notes editor.
-   main.js leaves a placeholder <div class="notes-canvas-root"
-   data-notes='[...]'> and calls LumiereNotesCanvas.mountAll(scope);
-   each placeholder gets its own React root.
-   - grows in the first time a perfume's notes are shown
-   - the circle under the pointer lifts with a soft spring
-   - redraws when its size changes
-   Written with React.createElement (no build step / JSX).
-   ========================================================= */
 (function () {
   "use strict";
 
@@ -20,9 +7,8 @@
   const NOTE_FILLS = ["#e6efe9", "#e4ecf3", "#f3ece4", "#efe9f3", "#e9eef0", "#f1ebe3", "#f7e9ec", "#eef0ef"];
   const NOTE_INKS = ["#3f6b56", "#3d6283", "#83613d", "#6a4f83", "#4b5f66", "#7a5a37", "#9a4a5c", "#4b5f66"];
   const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const animated = new Set();   // grow in each perfume's notes only the first time
+  const animated = new Set();
 
-  // Split a note name into at most 2 lines that fit `maxWidth`
   function fitLabel(ctx, text, maxWidth, maxSize) {
     for (let size = maxSize; size >= 9; size--) {
       ctx.font = `600 ${size}px ${getComputedStyle(document.body).fontFamily}`;
@@ -38,13 +24,11 @@
         if (best) return { size, lines: best.lines };
       }
     }
-    // still too long: shorten with an ellipsis
     let t = text;
     while (t.length > 3 && ctx.measureText(`${t}…`).width > maxWidth) t = t.slice(0, -1);
     return { size: 9, lines: [`${t}…`] };
   }
 
-  // Draw the circles; returns where they are (for hover)
   function draw(canvas, notes, progress, hover) {
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
@@ -67,13 +51,13 @@
 
     notes.forEach((note, i) => {
       const row = Math.floor(i / perRow);
-      const inRow = row === rows - 1 ? n - perRow * (rows - 1) : perRow;   // center a shorter last row
+      const inRow = row === rows - 1 ? n - perRow * (rows - 1) : perRow;
       const col = i - row * perRow;
       const cx = (width - inRow * cellW) / 2 + cellW * (col + 0.5);
       const cy = cellH * (row + 0.5);
       const r = radius * (0.6 + 0.4 * ease);
-      const grow = hover.scale[i] || 1;            // hover: up to ~1.08
-      const lift = (grow - 1) * 40;                // …and floats up a few pixels
+      const grow = hover.scale[i] || 1;
+      const lift = (grow - 1) * 40;
       circles.push({ cx, cy, r: radius });
 
       ctx.save();
@@ -86,7 +70,7 @@
       ctx.fill();
       ctx.lineWidth = 1.5 / grow;
       ctx.strokeStyle = NOTE_INKS[i % NOTE_INKS.length];
-      ctx.globalAlpha = ease * (0.35 + (grow - 1) * 4);   // outline gets a little stronger on hover
+      ctx.globalAlpha = ease * (0.35 + (grow - 1) * 4);
       ctx.stroke();
 
       ctx.globalAlpha = ease;
@@ -116,7 +100,6 @@
       };
       const paint = () => { st.circles = draw(canvas, notes, st.progress, st.hover); };
 
-      // grow in (first time only), otherwise draw right away
       let growRaf = 0;
       if (!reduced && !animated.has(animateKey)) {
         animated.add(animateKey);
@@ -132,11 +115,9 @@
         paint();
       }
 
-      // keep it sharp when the panel resizes
       const resizer = "ResizeObserver" in window ? new ResizeObserver(paint) : null;
       if (resizer) resizer.observe(canvas);
 
-      // hover: the circle under the pointer grows and lifts with a soft spring
       const hover = st.hover;
       const animateHover = () => {
         if (hover.raf) return;
@@ -144,7 +125,7 @@
           let moving = false;
           hover.scale = hover.scale.map((s, i) => {
             const target = i === hover.index ? 1.08 : 1;
-            hover.velocity[i] = (hover.velocity[i] || 0) * 0.62 + (target - s) * 0.22;   // spring: a tiny bounce
+            hover.velocity[i] = (hover.velocity[i] || 0) * 0.62 + (target - s) * 0.22;
             const next = s + hover.velocity[i];
             const settled = Math.abs(target - next) < 0.0008 && Math.abs(hover.velocity[i]) < 0.0008;
             if (settled) { hover.velocity[i] = 0; return target; }
@@ -165,7 +146,7 @@
       };
       const onLeave = () => { hover.index = -1; animateHover(); };
       if (!reduced) {
-        canvas.addEventListener("pointerover", onMove);   // the pointer entering counts too
+        canvas.addEventListener("pointerover", onMove);
         canvas.addEventListener("pointermove", onMove);
         canvas.addEventListener("pointerleave", onLeave);
       }
@@ -189,11 +170,9 @@
     }, label);
   }
 
-  /* ---------- Mounting into the placeholders main.js renders ---------- */
-  const roots = new Map();   // placeholder element -> React root
+  const roots = new Map();
 
   function mountAll(scope = document) {
-    // placeholders that were replaced by a re-render: unmount their roots
     roots.forEach((root, el) => {
       if (!el.isConnected) { root.unmount(); roots.delete(el); }
     });

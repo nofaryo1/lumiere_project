@@ -1,4 +1,3 @@
-
 (function () {
   "use strict";
 
@@ -39,14 +38,13 @@
   }
 
   function TopReviewers() {
-    const [reviewers, setReviewers] = useState(null);   // null = loading
+    const [reviewers, setReviewers] = useState(null);
     const [error, setError] = useState("");
     const [session, setSession] = useState(app.getSession());
-    const [pending, setPending] = useState({});          // username -> optimistic follow state
+    const [pending, setPending] = useState({});
 
     const load = useCallback(async () => {
       try {
-        // top 4 by reviews submitted during the current month
         const res = await app.api("/members/top?period=month&limit=4");
         setReviewers(res.users);
         setError("");
@@ -59,13 +57,11 @@
       if (app.isReady()) load();
       const onReady = () => { setSession(app.getSession()); load(); };
       const onAuth = () => { setSession(app.getSession()); setPending({}); load(); };
-      // a follow changed anywhere on the page (here, a review card, a profile…)
       const onFollow = (e) => {
         const { username, followers } = e.detail;
         setSession(app.getSession());
         setReviewers((list) => list && list.map((u) => (u.username === username ? { ...u, followers } : u)));
       };
-      // re-rank when anyone posts or deletes a review (live), and once a minute as a fallback
       const onReviews = () => load();
       const timer = setInterval(load, 60 * 1000);
       document.addEventListener("lumiere:ready", onReady);
@@ -84,7 +80,7 @@
     const onFollow = useCallback(async (username) => {
       const current = app.getSession().following.has(username);
       if (app.getSession().user) setPending((p) => ({ ...p, [username]: !current }));
-      await app.toggleFollow(username);   // opens the sign-up window when signed out
+      await app.toggleFollow(username);
       setSession(app.getSession());
       setPending((p) => { const next = { ...p }; delete next[username]; return next; });
     }, []);

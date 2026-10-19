@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 
-// `follower` follows `following`
 const followSchema = new mongoose.Schema(
   {
     follower: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },

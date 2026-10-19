@@ -1,8 +1,6 @@
-// Help center: "get back to me" requests
 const ContactRequest = require("../models/ContactRequest");
 const { text } = require("../lib/helpers");
 
-/* ---------- Help center: "get back to me" requests ---------- */
 exports.create = async (req, res) => {
   const name = text(req.body.name, 80);
   const email = text(req.body.email, 120).toLowerCase();

@@ -1,16 +1,6 @@
-/* =========================================================
-   LUMIERE — Group posts per month (D3)
-   Same minimal line style as the review trends chart: one line per
-   group for the five most active groups; the hover tooltip and the
-   data table include every group.
-
-   LumiereGroupChart.mount(container, data)
-     data = response of GET /api/stats/group-posts
-   ========================================================= */
 (function () {
   "use strict";
 
-  // Same categorical slots as the review trends chart (validated palette)
   const COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"];
   const fmt = d3.format(",");
   const fmtMonth = d3.utcFormat("%B %Y");
@@ -25,7 +15,6 @@
     root.innerHTML = "";
     const wrap = d3.select(root).append("div").attr("class", "trends");
 
-    // ---- headline numbers ----
     const busiest = all.length ? all.reduce((a, b) => (b.values[last] > a.values[last] ? b : a), all[0]) : null;
     const peakIdx = data.totals.indexOf(Math.max(...data.totals));
     const kpis = wrap.append("div").attr("class", "trends__kpis");
@@ -44,7 +33,6 @@
       return;
     }
 
-    // ---- legend (line keys) ----
     const legend = wrap.append("ul").attr("class", "trends__legend").attr("aria-label", "Legend");
     lines.forEach((s) => {
       const li = legend.append("li");
@@ -70,7 +58,6 @@
         .attr("role", "img")
         .attr("aria-label", `Posts per month in the five most active groups over the past year. Busiest this month: ${busiest ? busiest.name : "none"}.`);
 
-      // grid + axes (recessive)
       svg.append("g").attr("class", "trends__grid")
         .selectAll("line").data(y.ticks(4)).join("line")
         .attr("x1", m.left).attr("x2", width - m.right).attr("y1", (d) => y(d)).attr("y2", (d) => y(d));
@@ -83,7 +70,6 @@
         .call(d3.axisBottom(x).ticks(narrow ? 4 : 12).tickSize(0).tickFormat(d3.utcFormat("%b")))
         .call((g) => g.select(".domain").remove());
 
-      // lines: solid for finished months, dashed for the current (partial) month
       const line = d3.line().x((d) => x(months[d.i])).y((d) => y(d.v)).curve(d3.curveMonotoneX);
       const points = (s) => s.values.map((v, i) => ({ v, i }));
       svg.append("g").selectAll("path").data(lines).join("path")
@@ -98,7 +84,6 @@
         .attr("x", x(months[last])).attr("y", height - m.bottom + 36).attr("text-anchor", "middle")
         .text("so far");
 
-      // direct label for the busiest group in the last full month (legend carries the rest)
       const full = last - 1;
       const top = [...lines].sort((a, b) => b.values[full] - a.values[full])[0];
       if (top && !narrow) {
@@ -109,7 +94,6 @@
         label.append("tspan").attr("x", x(months[last]) + 10).attr("dy", "1.2em").text(top.name.length > 14 ? top.name.slice(0, 13) + "…" : top.name);
       }
 
-      // ---- crosshair + tooltip ----
       const cross = svg.append("line").attr("class", "trends__cross").attr("y1", m.top).attr("y2", height - m.bottom).style("display", "none");
       const dots = svg.append("g").selectAll("circle").data(lines).join("circle")
         .attr("class", "trends__dot").attr("r", 4).attr("fill", (s) => s.color).style("display", "none");
@@ -165,7 +149,6 @@
         });
     }
 
-    // ---- table view: every group, every month ----
     const details = wrap.append("details").attr("class", "trends__table");
     details.append("summary").text("Show data table");
     const table = details.append("div").attr("class", "trends__table-scroll").append("table");
@@ -188,7 +171,7 @@
       if (Math.abs(root.clientWidth - lastWidth) < 8) return;
       lastWidth = root.clientWidth;
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(draw);   // redraw after layout settles
+      frame = requestAnimationFrame(draw);
     }).observe(root);
   }
 
