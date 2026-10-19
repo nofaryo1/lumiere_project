@@ -16,24 +16,6 @@ A little social network for people who love perfume. Find new scents, see what o
 
 Node.js and Express on the server, MongoDB through Mongoose, jQuery in the browser, a few React components, D3 for the charts, and Socket.io for the live chat.
 
-## Getting started
-
-You'll need **Node.js 20.19 or newer** and a **MongoDB** database. A free MongoDB Atlas cluster works fine, and so does MongoDB running on your own machine.
-
-```bash
-npm install
-cp .env.example .env
-```
-
-Open `.env` and put in your own MongoDB connection string:
-
-```
-MONGO_URI=mongodb+srv://<username>:<password>@<cluster-host>/?retryWrites=true&w=majority
-```
-
-For a local database, `mongodb://127.0.0.1:27017` is enough. The app keeps its data in a database called `lumiere`.
-
-If you're on Atlas, add your computer's IP address under **Network Access**, or the server won't be able to connect.
 
 ## Running it
 
