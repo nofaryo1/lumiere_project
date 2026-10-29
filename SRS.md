@@ -156,6 +156,7 @@ src/
   socket/chat.jsx       chat logic shared by the API and Socket.io
   utils/helpers.jsx     shared helpers (JSON shapes, stats, input trimming)
   utils/uploads.jsx     photo upload checks, saving and serving
+  utils/perfumeCache.jsx keeps the perfume list and its counts in memory
   utils/perfumeKey.jsx  slugs and duplicate detection keys
   utils/catalog.jsx     loads the built-in catalog into the DB
   utils/groups.jsx      the 12 built-in groups
@@ -435,7 +436,7 @@ Runs once the database is connected:
 - `activity` — merges the latest reviews, likes, follows, added perfumes, joins and posts into one time-sorted feed; `scope=following` limits it to people I follow.
 
 **`perfumeController`**
-- `list` — all perfumes plus stats per perfume (reviews, rating sum, likes, this week, last week, this month), from two aggregations.
+- `list` — all perfumes plus stats per perfume (reviews, rating sum, likes, this week, last week, this month), from two aggregations. Both parts are kept in memory by `utils/perfumeCache.jsx` (see 7.7), so this answer usually takes a few milliseconds.
 - `check` — "is this perfume already here?" (`findDuplicate`: same normalized brand+name, or same name with a matching/empty brand).
 - `create` — the photo is the request body, the details are in the `X-Perfume` header (JSON). Validates fields and photo, refuses duplicates (409 with a link to the existing one), makes a unique slug, saves the photo, creates the perfume, tells everyone (`perfume:added`).
 - `update`, `updateImage`, `updateNotes`, `remove` — owner only (`ownPerfume` → 403 otherwise). Deleting also removes its reviews, likes, votes and photo, and untags posts.
@@ -468,6 +469,7 @@ Why the database and not only the disk: the hosting service (Render, free plan) 
 ### 7.7 Helpers
 
 - `utils/helpers.jsx`: `text(value, max)` (only strings, trimmed, cut to a maximum length — used for every text input), `perfumeJSON`, `reviewJSON`, `authorJSON`, `meJSON` (the shapes sent to the browser), `statsFor(slug)`, `escapeRegex` (so a search for `a.b` doesn't act as a regular expression), `limitParam` (keeps page sizes in a safe range), `followingIds`, `requirePerfume`, `reviewsChanged` (tells everyone online that reviews changed).
+- `utils/perfumeCache.jsx`: every visit starts with `GET /api/perfumes`, and nothing can be shown before it answers. Counting all reviews and likes and reading all perfumes takes the database up to a second, so `perfumeStats()` and `perfumeList()` keep the result in memory. It is thrown away immediately when something changes it — `clearPerfumeStats()` after a like, unlike, review written/edited/deleted, perfume deleted or account deleted; `clearPerfumeList()` after a perfume is added, edited, gets new notes or a new photo, is deleted, or its adder deletes their account — so visitors never see old numbers. It is also rebuilt at least once a minute, in case another server sharing the database changed something. It is prepared once when the server starts.
 - `utils/perfumeKey.jsx`: `slugify` ("Dior Sauvage" → `dior-sauvage`), `normalize` (lowercase, no accents/punctuation, ignores words like "EDP", "Eau de Parfum", "ml"), `nameKey`, `perfumeKey` — used for duplicate detection.
 
 ### 7.8 Seed scripts (`seed/`)
@@ -756,7 +758,7 @@ Errors appear next to the field that caused them, in a message line in the form,
 | --- | --- | --- |
 | NFR-1 Usability | Clear, consistent design; every action gives feedback (toasts, pressed buttons, loading text) | Shared components and styles |
 | NFR-2 Responsiveness | Works from phone (390 px) to desktop | CSS grid/flex layouts and media queries; mobile menu |
-| NFR-3 Performance | Pages switch without reloading; lists are paged; counts come from indexed aggregations; chart data cached 60 s; photos lazy-loaded and shown as small thumbnails in lists; photos, fonts and the video may be cached by the browser for 7 days (member photos for a year) | SPA, indexes on every searched field |
+| NFR-3 Performance | Pages switch without reloading; lists are paged; counts come from indexed aggregations; the perfume list and its counts are kept in memory and cleared on every change (7.7); chart data cached 60 s; photos lazy-loaded and shown as small thumbnails in lists; photos, fonts and the video may be cached by the browser for 7 days (member photos for a year) | SPA, indexes on every searched field |
 | NFR-4 Real time | Chat and live updates arrive within a moment | Socket.io |
 | NFR-5 Reliability | Bad input never crashes the server; the app shows a message when something fails; uploaded photos survive restarts | Section 12, uploads in MongoDB |
 | NFR-6 Accessibility | Labels on buttons and inputs, keyboard navigation (carousel, suggestions, charts, Escape), visible focus, alt text, reduced-motion support | ARIA attributes in components |

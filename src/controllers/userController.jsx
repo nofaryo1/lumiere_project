@@ -12,6 +12,7 @@ const Message = require("../models/Message");
 const Session = require("../models/Session");
 const ContactRequest = require("../models/ContactRequest");
 const realtime = require("../socket/realtime");
+const { clearPerfumeStats, clearPerfumeList } = require("../utils/perfumeCache");
 const { checkPassword, endSession } = require("../middleware/auth");
 const { text, limitParam, escapeRegex, authorJSON, reviewJSON, followingIds } = require("../utils/helpers");
 
@@ -81,6 +82,8 @@ exports.deleteMe = async (req, res) => {
   await endSession(req, res);
   await Session.deleteMany({ user: me });
   await req.user.deleteOne();
+  clearPerfumeStats();
+  clearPerfumeList();
   realtime.disconnectUser(me);
   realtime.emitToAll("reviews:changed", {});
   res.json({ ok: true });

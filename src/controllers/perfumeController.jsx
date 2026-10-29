@@ -6,6 +6,7 @@ const GroupPost = require("../models/GroupPost");
 const realtime = require("../socket/realtime");
 const { slugify, normalize, nameKey, perfumeKey } = require("../utils/perfumeKey");
 const { isImage, saveImage, removeUpload } = require("../utils/uploads");
+const { perfumeStats, clearPerfumeStats, perfumeList, clearPerfumeList } = require("../utils/perfumeCache");
 const {
   FAMILIES, text, perfumeJSON, statsFor, requirePerfume, reviewsChanged,
 } = require("../utils/helpers");
@@ -21,44 +22,9 @@ async function findDuplicate(brand, name, exceptSlug = null) {
   return sameName.find((c) => !b || !normalize(c.brand) || normalize(c.brand) === b) || null;
 }
 
-function activityGroup(extra = {}) {
-  const day = 24 * 60 * 60 * 1000;
-  const now = Date.now();
-  const since = (days) => new Date(now - days * day);
-  const inRange = (from, to) => ({
-    $sum: { $cond: [{ $and: [{ $gte: ["$createdAt", since(from)] }, { $lt: ["$createdAt", since(to)] }] }, 1, 0] },
-  });
-  return {
-    $group: {
-      _id: "$perfume",
-      total: { $sum: 1 },
-      week: inRange(7, 0),
-      prevWeek: inRange(14, 7),
-      month: inRange(30, 0),
-      ...extra,
-    },
-  };
-}
-
 exports.list = async (req, res) => {
-  const [list, reviewStats, likeStats] = await Promise.all([
-    Perfume.find().populate("addedBy", "username").populate("notesAddedBy", "username").sort({ createdAt: 1 }),
-    Review.aggregate([activityGroup({ ratingSum: { $sum: "$rating" } })]),
-    Like.aggregate([activityGroup()]),
-  ]);
-  const stats = {};
-  const blank = { reviews: 0, ratingSum: 0, likes: 0, week: 0, prevWeek: 0, month: 0 };
-  reviewStats.forEach((s) => {
-    stats[s._id] = { ...blank, reviews: s.total, ratingSum: s.ratingSum, week: s.week, prevWeek: s.prevWeek, month: s.month };
-  });
-  likeStats.forEach((s) => {
-    const t = stats[s._id] || (stats[s._id] = { ...blank });
-    t.likes = s.total;
-    t.week += s.week;
-    t.prevWeek += s.prevWeek;
-    t.month += s.month;
-  });
-  res.json({ perfumes: list.map(perfumeJSON), stats });
+  const [perfumes, stats] = await Promise.all([perfumeList(), perfumeStats()]);
+  res.json({ perfumes, stats });
 };
 
 exports.check = async (req, res) => {
@@ -115,6 +81,7 @@ exports.create = async (req, res) => {
     source: "community",
     addedBy: req.user._id,
   });
+  clearPerfumeList();
   await perfume.populate("addedBy", "username");
   realtime.emitToAll("perfume:added", { perfume: perfumeJSON(perfume) });
   res.status(201).json({ perfume: perfumeJSON(perfume) });
@@ -135,6 +102,7 @@ exports.update = async (req, res) => {
   }
   Object.assign(perfume, { brand, name, tags, notes, key: perfumeKey(brand, name), nameKey: nameKey(brand, name) });
   await perfume.save();
+  clearPerfumeList();
   await perfume.populate("addedBy", "username");
   const json = perfumeJSON(perfume);
   realtime.emitToAll("perfume:changed", { perfume: json });
@@ -152,6 +120,8 @@ exports.remove = async (req, res) => {
     GroupPost.updateMany({ perfume: slug }, { $set: { perfume: null } }),
   ]);
   await perfume.deleteOne();
+  clearPerfumeStats();
+  clearPerfumeList();
   await removeUpload(perfume.image);
   realtime.emitToAll("perfume:deleted", { slug });
   reviewsChanged(slug);
@@ -165,6 +135,7 @@ exports.updateImage = async (req, res) => {
   const old = perfume.image;
   perfume.image = await saveImage(perfume.slug, req);
   await perfume.save();
+  clearPerfumeList();
   await removeUpload(old);
   realtime.emitToAll("perfume:changed", { perfume: perfumeJSON(await perfume.populate("addedBy", "username")) });
   res.json({ image: perfume.image });
@@ -266,6 +237,7 @@ exports.updateNotes = async (req, res) => {
   perfume.notes = notes;
   perfume.notesAddedBy = null;
   const updated = await perfume.save();
+  clearPerfumeList();
   const payload = { slug: updated.slug, notes: updated.notes, notesAddedBy: null };
   realtime.emitToAll("perfume:notes", payload);
   res.json(payload);
@@ -278,10 +250,12 @@ exports.like = async (req, res) => {
     { $setOnInsert: { user: req.user._id, perfume: req.params.slug } },
     { upsert: true }
   );
+  clearPerfumeStats();
   res.json({ liked: true, stats: await statsFor(req.params.slug) });
 };
 
 exports.unlike = async (req, res) => {
   await Like.deleteOne({ user: req.user._id, perfume: req.params.slug });
+  clearPerfumeStats();
   res.json({ liked: false, stats: await statsFor(req.params.slug) });
 };

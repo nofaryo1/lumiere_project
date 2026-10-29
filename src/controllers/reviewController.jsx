@@ -4,6 +4,7 @@ const User = require("../models/User");
 const {
   text, limitParam, escapeRegex, reviewJSON, statsFor, followingIds, requirePerfume, reviewsChanged,
 } = require("../utils/helpers");
+const { clearPerfumeStats } = require("../utils/perfumeCache");
 
 const SINCE_DAYS = { week: 7, month: 30, year: 365 };
 
@@ -32,6 +33,7 @@ exports.create = async (req, res) => {
   const input = reviewInput(req, res);
   if (!input) return;
   await Review.create({ user: req.user._id, perfume: req.params.slug, ...input });
+  clearPerfumeStats();
   reviewsChanged(req.params.slug);
   res.status(201).json({ stats: await statsFor(req.params.slug) });
 };
@@ -50,6 +52,7 @@ exports.update = async (req, res) => {
   if (!input) return;
   Object.assign(review, input);
   await review.save();
+  clearPerfumeStats();
   res.json({ stats: await statsFor(review.perfume) });
 };
 
@@ -57,6 +60,7 @@ exports.remove = async (req, res) => {
   const review = await myReview(req, res);
   if (!review) return;
   await review.deleteOne();
+  clearPerfumeStats();
   reviewsChanged(review.perfume);
   res.json({ stats: await statsFor(review.perfume) });
 };
