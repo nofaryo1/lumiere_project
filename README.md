@@ -27,3 +27,13 @@ Then open [http://localhost:3000](http://localhost:3000).
 
 The first time it starts, LUMIERE loads its built-in perfume catalog and a handful of discussion groups by itself, so there's something to look at right away.
 
+
+## Live demo (Render)
+
+The repo includes a `render.yaml`, so it can be deployed on [Render](https://render.com) as a free web service:
+
+1. In MongoDB Atlas, under **Network Access**, allow access from anywhere (`0.0.0.0/0`), since Render's addresses change.
+2. On Render: **New → Blueprint**, pick this GitHub repo, and paste your `MONGO_URI` when asked.
+3. Render installs, builds and starts the app, and gives you a public `https://….onrender.com` link.
+
+On the free plan the site goes to sleep after about 15 minutes without visitors, so the first visit after that takes a little while to wake up.

@@ -4,6 +4,10 @@ const path = require("path");
 require("dotenv").config();
 
 const app = express();
+const PORT = process.env.PORT || 3000;
+
+// behind a hosting proxy (e.g. Render) req.ip must be the visitor, not the proxy
+if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/vendor/d3", express.static(path.join(__dirname, "node_modules", "d3", "dist")));
@@ -23,6 +27,6 @@ app.use(require("./routes/pages"));
 const server = require("http").createServer(app);
 require("./lib/realtime").attachRealtime(server);
 
-server.listen(3000, () => {
-  console.log("Server running on http://localhost:3000");
+server.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });
