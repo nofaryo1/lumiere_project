@@ -12,7 +12,13 @@ const PORT = process.env.PORT || 3000;
 // behind a hosting proxy (e.g. Render) req.ip must be the visitor, not the proxy
 if (process.env.NODE_ENV === "production") app.set("trust proxy", 1);
 
-app.use(express.static(PUBLIC));
+// Photos, fonts and the video rarely change (an uploaded photo never changes: each one gets a new name): browsers may keep them for a week instead of asking again on every page view
+const LONG_CACHE = /^\/(images|fonts|videos|uploads)\//;
+app.use(express.static(PUBLIC, {
+  setHeaders(res) {
+    if (LONG_CACHE.test(res.req.path)) res.set("Cache-Control", "public, max-age=604800, stale-while-revalidate=86400");
+  },
+}));
 app.use("/api", require("./src/routes/api"));
 require("./src/utils/startup");
 

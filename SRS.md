@@ -678,7 +678,7 @@ It is used on every perfume page, and as a live preview while typing notes in th
 
 ### 10.7 Perfume photos in the browser
 
-`PerfumeMedia` shows the photo (`loading="lazy"`), and always draws a simple bottle (`BottleThumb`, SVG, colored by scent family) behind it. If a photo fails to load, the bottle is shown instead, so a card never shows a broken-image icon.
+`PerfumeMedia` shows the photo (`loading="lazy"`). Cards, lists and search suggestions use a small copy of each catalog photo (`public/images/perfumes/thumbs/`, longest side 360 px, about a third of the size); only the large photo on the perfume page uses the original, and if a small copy is missing the original is used instead. It always draws a simple bottle (`BottleThumb`, SVG, colored by scent family) behind it. If a photo fails to load, the bottle is shown instead, so a card never shows a broken-image icon.
 
 ---
 
@@ -756,7 +756,7 @@ Errors appear next to the field that caused them, in a message line in the form,
 | --- | --- | --- |
 | NFR-1 Usability | Clear, consistent design; every action gives feedback (toasts, pressed buttons, loading text) | Shared components and styles |
 | NFR-2 Responsiveness | Works from phone (390 px) to desktop | CSS grid/flex layouts and media queries; mobile menu |
-| NFR-3 Performance | Pages switch without reloading; lists are paged; counts come from indexed aggregations; chart data cached 60 s; photos lazy-loaded; member photos cached by the browser | SPA, indexes on every searched field |
+| NFR-3 Performance | Pages switch without reloading; lists are paged; counts come from indexed aggregations; chart data cached 60 s; photos lazy-loaded and shown as small thumbnails in lists; photos, fonts and the video may be cached by the browser for 7 days (member photos for a year) | SPA, indexes on every searched field |
 | NFR-4 Real time | Chat and live updates arrive within a moment | Socket.io |
 | NFR-5 Reliability | Bad input never crashes the server; the app shows a message when something fails; uploaded photos survive restarts | Section 12, uploads in MongoDB |
 | NFR-6 Accessibility | Labels on buttons and inputs, keyboard navigation (carousel, suggestions, charts, Escape), visible focus, alt text, reduced-motion support | ARIA attributes in components |

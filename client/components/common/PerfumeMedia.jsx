@@ -29,20 +29,27 @@ export function BottleThumb({ look, className = "" }) {
   );
 }
 
+// Cards and lists show a small copy of a catalog photo; the large photo on the perfume page uses the original
+const CATALOG = "/images/perfumes/";
+const thumbOf = (image, size) => (size !== "lg" && image.startsWith(CATALOG) ? image.replace(CATALOG, `${CATALOG}thumbs/`) : image);
+
 function Media({ p, size }) {
   const [broken, setBroken] = useState(false);
+  const [src, setSrc] = useState(() => (p.image ? thumbOf(p.image, size) : ""));
+  // if the small copy is missing, fall back to the original before showing the drawn bottle
+  const onError = () => { if (src !== p.image) setSrc(p.image); else setBroken(true); };
   const classes = ["perfume-media", size && `perfume-media--${size}`, p.image && "has-photo", broken && "is-broken"].filter(Boolean).join(" ");
   return (
     <span className={classes}>
       {p.image ? (
         <img
           className="perfume-media__img"
-          src={p.image}
+          src={src}
           alt={p.name}
           loading="lazy"
           decoding="async"
           style={p.imageZoom ? { "--media-zoom": Number(p.imageZoom) } : undefined}
-          onError={() => setBroken(true)}
+          onError={onError}
         />
       ) : null}
       <BottleThumb look={p.look} className="perfume-media__img perfume-media__fallback" />
