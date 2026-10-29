@@ -3,4 +3,5 @@ node_modules/
 public/uploads/
 docs/
 .claude/
-public/js/react/
+dist/
+public/build/

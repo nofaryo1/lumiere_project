@@ -14,12 +14,38 @@ A little social network for people who love perfume. Find new scents, see what o
 
 ## Built with
 
-Node.js and Express on the server, MongoDB through Mongoose, jQuery in the browser, a few React components, D3 for the charts, and Socket.io for the live chat.
+Node.js and Express on the server, MongoDB through Mongoose, React for the whole site in the browser (with jQuery AJAX for every call to the server), D3 for the charts, and Socket.io for the live chat. All the code is written as `.jsx` and bundled with esbuild.
+
+## How it's organized
+
+```
+server.jsx          starts Express, the database and the live chat
+config/db.jsx       the MongoDB connection
+src/
+  models/           Mongoose models (User, Perfume, Review, Group, GroupPost, Message, ...)
+  controllers/      what each API route does
+  routes/           the API routes and the page route
+  middleware/       login sessions and request checks
+  socket/           live chat and live updates
+  utils/            shared helpers, photo uploads, the built-in catalog and groups
+  data/             the built-in perfume catalog
+seed/               demo members, reviews and group activity
+client/
+  pages/app.jsx     the browser entry point
+  components/       React components, one folder per part of the site
+  store/            the site's shared state and the actions that talk to the server
+  lib/              small helpers (jQuery AJAX, formatting)
+views/index.html    the page React draws into
+public/             styles, fonts, images and the video
+```
+
+`npm run build` bundles the server into `dist/` and the browser code into `public/build/`; both are created on build and aren't stored in the repo.
 
 
 ## Running it
 
 ```bash
+npm install
 npm start
 ```
 

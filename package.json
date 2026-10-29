@@ -2,13 +2,15 @@
   "name": "lumiere_project",
   "version": "1.0.0",
   "description": "",
-  "main": "server.js",
+  "main": "dist/server.js",
   "scripts": {
-    "build": "node scripts/build-react.js",
+    "build": "npm run build:server && npm run build:client",
+    "build:server": "esbuild server.jsx seed/seed.jsx --bundle --platform=node --packages=external --format=cjs --target=node20 --outdir=dist --outbase=. --log-level=warning",
+    "build:client": "esbuild client/pages/app.jsx --bundle --format=esm --jsx=automatic --minify --sourcemap --target=es2020 --outdir=public/build --log-level=warning",
     "prestart": "npm run build",
-    "start": "node server.js",
-    "seed:community": "node scripts/seed-community.js",
-    "seed:groups": "node scripts/seed-groups.js"
+    "start": "node dist/server.js",
+    "seed:community": "npm run build:server && node dist/seed/seed.js community",
+    "seed:groups": "npm run build:server && node dist/seed/seed.js groups"
   },
   "keywords": [],
   "author": "",
