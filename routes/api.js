@@ -80,7 +80,7 @@ router.post("/contact", contactLimiter, contact.create);
 
 router.use((req, res) => res.status(404).json({ error: "Not found." }));
 
-// Express recognizes an error handler by its 4 arguments, so `next` must stay even though it is unused
+
 router.use((err, req, res, next) => {
   if (err.type === "entity.too.large") return res.status(413).json({ error: "That file is too large (max 5 MB)." });
   if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Invalid request." });
