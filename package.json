@@ -6,7 +6,6 @@
   "scripts": {
     "build": "node scripts/build-react.js",
     "prestart": "npm run build",
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "seed:community": "node scripts/seed-community.js",
     "seed:groups": "node scripts/seed-groups.js"
